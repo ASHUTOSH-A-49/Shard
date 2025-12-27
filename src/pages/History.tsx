@@ -1,139 +1,191 @@
-import { motion } from 'framer-motion';
-import { FileText, CheckCircle, XCircle, Clock, Eye, RotateCcw } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { motion } from "framer-motion";
+import { HiOutlineEye } from "react-icons/hi";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+// ADD THIS TO THE IMPORTS 🔥
+import { UploadCloud, Workflow } from "lucide-react";
 
-const historyItems = [
+
+// 🚨 Exporting this for InvoiceDetails page
+export const processedInvoices = [
   {
-    id: '1',
-    date: 'Today',
-    invoices: [
-      { id: 'h1', invoiceNumber: 'INV-2024-047', vendor: 'Acme Corp', amount: 2450, status: 'approved', time: '10:30 AM' },
-      { id: 'h2', invoiceNumber: 'INV-2024-046', vendor: 'TechFlow Inc', amount: 8750.50, status: 'approved', time: '09:15 AM' },
-    ],
+    vendor: "Office Essentials",
+    status: "approved",
+    invoiceNumber: "INV-20240003",
+    amount: "$14,752.81",
+    uploadedBy: "John Smith",
+    uploadedTime: "Dec 26, 07:54 PM",
+    extractedTime: "Dec 26, 07:54 PM",
+    accuracy: "95.8%",
   },
   {
-    id: '2',
-    date: 'Yesterday',
-    invoices: [
-      { id: 'h3', invoiceNumber: 'INV-2024-045', vendor: 'CloudSoft', amount: 1250, status: 'rejected', time: '04:45 PM' },
-      { id: 'h4', invoiceNumber: 'INV-2024-044', vendor: 'Global Ltd', amount: 3200.75, status: 'approved', time: '02:30 PM' },
-      { id: 'h5', invoiceNumber: 'INV-2024-043', vendor: 'Innovation Labs', amount: 15000, status: 'approved', time: '11:00 AM' },
-    ],
+    vendor: "DataPro Systems",
+    status: "approved",
+    invoiceNumber: "INV-20240005",
+    amount: "$17,382.46",
+    uploadedBy: "Sarah Johnson",
+    uploadedTime: "Dec 23, 12:28 AM",
+    extractedTime: "Dec 23, 12:28 AM",
+    accuracy: "97.9%",
   },
   {
-    id: '3',
-    date: 'Jan 22, 2024',
-    invoices: [
-      { id: 'h6', invoiceNumber: 'INV-2024-042', vendor: 'DataStream Inc', amount: 4500, status: 'approved', time: '03:20 PM' },
-      { id: 'h7', invoiceNumber: 'INV-2024-041', vendor: 'SecureNet', amount: 2100, status: 'approved', time: '10:45 AM' },
-    ],
+    vendor: "TechSupply Inc",
+    status: "approved",
+    invoiceNumber: "INV-20240009",
+    amount: "$33,812.92",
+    uploadedBy: "Sarah Johnson",
+    uploadedTime: "Dec 24, 10:19 AM",
+    extractedTime: "Dec 24, 10:19 AM",
+    accuracy: "94.1%",
+  },
+  {
+    vendor: "DataPro Systems",
+    status: "approved",
+    invoiceNumber: "INV-20240102",
+    amount: "$22,656.54",
+    uploadedBy: "Mike Chen",
+    uploadedTime: "Dec 23, 03:40 PM",
+    extractedTime: "Dec 23, 03:40 PM",
+    accuracy: "98.2%",
+  },
+  {
+    vendor: "Premium Materials Co",
+    status: "approved",
+    invoiceNumber: "INV-20240014",
+    amount: "$33,251.97",
+    uploadedBy: "Alex Wilson",
+    uploadedTime: "Dec 24, 03:27 AM",
+    extractedTime: "Dec 24, 03:27 AM",
+    accuracy: "95.9%",
   },
 ];
 
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return <CheckCircle className="w-4 h-4 text-success" />;
-    case 'rejected':
-      return <XCircle className="w-4 h-4 text-destructive" />;
-    default:
-      return <Clock className="w-4 h-4 text-warning" />;
-  }
-};
-
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case 'approved':
-      return <Badge variant="success">Approved</Badge>;
-    case 'rejected':
-      return <Badge variant="destructive">Rejected</Badge>;
-    default:
-      return <Badge variant="warning">Pending</Badge>;
-  }
+// 🔹 Reusable status badge styling
+const StatusBadge = ({ status }: { status: string }) => {
+  const colors: any = {
+    approved: "bg-green-500/10 text-green-500",
+    rejected: "bg-red-500/10 text-red-500",
+    review: "bg-yellow-500/10 text-yellow-500",
+  };
+  return (
+    <span
+      className={`px-3 py-1 text-xs font-medium rounded-full capitalize ${colors[status]}`}
+    >
+      {status}
+    </span>
+  );
 };
 
 export default function History() {
+  const navigate = useNavigate();
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto px-6 py-8">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-3xl font-bold text-foreground">History</h1>
+        <h1 className="text-3xl font-bold text-foreground">Processing History</h1>
         <p className="text-muted-foreground mt-1">
-          View all processed invoices organized by date
+          {processedInvoices.length} processed invoices
         </p>
       </motion.div>
 
-      {/* Timeline */}
-      <div className="relative">
-        {/* Timeline line */}
-        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
-
-        {historyItems.map((group, groupIndex) => (
+      {/* Cards */}
+      <div className="space-y-6">
+        {processedInvoices.map((inv, i) => (
           <motion.div
-            key={group.id}
+            key={i}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: groupIndex * 0.1 }}
-            className="relative mb-8"
+            transition={{ delay: i * 0.05 }}
           >
-            {/* Date Header */}
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center z-10">
-                <FileText className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">{group.date}</h2>
-              <Badge variant="secondary">{group.invoices.length} invoices</Badge>
-            </div>
+            <Card className="bg-card/90 border-border">
+              <CardContent className="p-6 space-y-6">
+                {/* Top Row */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">{inv.vendor}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {inv.invoiceNumber} • {inv.amount}
+                    </p>
+                  </div>
+                  <StatusBadge status={inv.status} />
+                </div>
 
-            {/* Invoices */}
-            <div className="ml-12 space-y-3">
-              {group.invoices.map((invoice, index) => (
-                <motion.div
-                  key={invoice.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: groupIndex * 0.1 + index * 0.05 }}
-                >
-                  <Card hover>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-                            {getStatusIcon(invoice.status)}
-                          </div>
-                          <div>
-                            <p className="font-medium text-foreground">{invoice.invoiceNumber}</p>
-                            <p className="text-sm text-muted-foreground">{invoice.vendor}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="font-semibold text-foreground">
-                              ${invoice.amount.toLocaleString()}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{invoice.time}</p>
-                          </div>
-                          {getStatusBadge(invoice.status)}
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost">
-                              <RotateCcw className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
+                {/* Timeline inside card */}
+               {/* Timeline inside card */}
+<div className="ml-3 space-y-10">
+
+  {/* Uploaded */}
+  <div className="flex gap-4">
+    {/* ICON + LINE */}
+    <div className="flex flex-col items-center">
+      <div className="w-10 h-10 bg-teal-500/10 border border-teal-500/30 rounded-full flex items-center justify-center">
+        <UploadCloud className="w-5 h-5 text-teal-400" />
+      </div>
+      {/* LINE BELOW ICON */}
+      <div className="w-px flex-1 bg-border" />
+    </div>
+
+    {/* TEXT */}
+    <div>
+      <div className="flex items-center gap-2 font-medium">
+        <span className="text-teal-400 font-semibold">Uploaded</span>
+        <span className="text-xs text-muted-foreground">{inv.uploadedTime}</span>
+      </div>
+      <p className="text-sm text-muted-foreground">{inv.uploadedBy}</p>
+      <p className="text-sm text-muted-foreground">Document uploaded via drag & drop</p>
+    </div>
+  </div>
+
+
+  {/* Extracted */}
+  <div className="flex gap-4">
+    {/* ICON + LINE */}
+    <div className="flex flex-col items-center">
+      <div className="w-10 h-10 bg-blue-500/10 border border-blue-500/30 rounded-full flex items-center justify-center">
+        <Workflow className="w-5 h-5 text-blue-400" />
+      </div>
+      {/* LINE BELOW ICON */}
+      <div className="w-px flex-1 bg-border" />
+    </div>
+
+    {/* TEXT */}
+    <div>
+      <div className="flex items-center gap-2 font-medium">
+        <span className="text-blue-400 font-semibold">Extracted</span>
+        <span className="text-xs text-muted-foreground">{inv.extractedTime}</span>
+      </div>
+      <p className="text-sm text-muted-foreground">AI Engine v2.1</p>
+      <p className="text-sm text-muted-foreground">
+        Extracted 8 fields with {inv.accuracy} average confidence
+      </p>
+    </div>
+  </div>
+
+</div>
+
+
+
+                {/* View Button */}
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    className="flex items-center gap-2"
+                    onClick={() =>
+                      navigate(`/processing/inv/${inv.invoiceNumber}`)
+                    }
+                  >
+                    <HiOutlineEye className="w-4 h-4" />
+                    View Details
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
         ))}
       </div>

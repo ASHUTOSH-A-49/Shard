@@ -15,6 +15,8 @@ import History from "./pages/History";
 import Settings from "./pages/Settings";
 import { AppLayout } from "./components/layout/AppLayout";
 import NotFound from "./pages/NotFound";
+import InvoiceDetails from "./pages/InvoiceDetails";
+
 
 const queryClient = new QueryClient();
 
@@ -35,20 +37,29 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/upload" element={<Upload />} />
-              <Route path="/processing" element={<Processing />} />
-              <Route path="/review-queue" element={<ReviewQueue />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/history" element={<History />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+  <Routes>
+    <Route path="/" element={<Landing />} />
+
+    {/* Layout pages */}
+    <Route element={<AppLayout />}>
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/upload" element={<Upload />} />
+
+      {/* 🔥 ADD THIS FOR INVOICE DETAILS */}
+      <Route path="/processing/inv/:invoiceId" element={<InvoiceDetails />} />
+      
+      <Route path="/processing" element={<Processing />} />
+      <Route path="/review-queue" element={<ReviewQueue />} />
+      <Route path="/analytics" element={<Analytics />} />
+      <Route path="/history" element={<History />} />
+      <Route path="/settings" element={<Settings />} />
+    </Route>
+
+    {/* 404 */}
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+</BrowserRouter>
+
       </ThemeInitializer>
     </TooltipProvider>
   </QueryClientProvider>
