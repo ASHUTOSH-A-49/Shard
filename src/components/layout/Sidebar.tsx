@@ -1,5 +1,6 @@
+import { useState,useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useMotionValueEvent } from 'framer-motion';
 import { 
   LayoutDashboard, 
   Upload, 
@@ -32,11 +33,27 @@ const navItems = [
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  
+  // Mobile detection hook (≤ 768px)
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Force collapsed on mobile
+  const finalCollapsed = isMobile || collapsed;
 
   return (
     <motion.aside
       initial={false}
-      animate={{ width: collapsed ? 72 : 260 }}
+      animate={{ width: finalCollapsed ? 72 : 260 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className="fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border flex flex-col"
     >
@@ -46,7 +63,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow">
             <FileText className="w-5 h-5 text-primary-foreground" />
           </div>
-          {!collapsed && (
+          {!finalCollapsed && (
             <motion.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -76,7 +93,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 )}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && (
+                {!finalCollapsed && (
                   <motion.span
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -91,15 +108,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         })}
       </nav>
 
-      {/* Toggle Button */}
+      {/* Toggle Button - Disabled on mobile */}
       <div className="p-3 border-t border-sidebar-border">
         <Button
           variant="ghost"
           size="icon"
-          onClick={onToggle}
-          className="w-full h-9"
+          onClick={isMobile ? undefined : onToggle}
+          disabled={isMobile}
+          className={cn(
+            "w-full h-9",
+            isMobile && "opacity-50 cursor-not-allowed"
+          )}
         >
-          {collapsed ? (
+          {finalCollapsed ? (
             <ChevronRight className="w-4 h-4" />
           ) : (
             <ChevronLeft className="w-4 h-4" />

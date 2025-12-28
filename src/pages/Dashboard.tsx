@@ -36,7 +36,6 @@ import {
   Bar,
 } from 'recharts';
 
-
 // -------------------- SAMPLE DATA --------------------
 const volumeData = [
   { name: 'Mon', invoices: 145 },
@@ -54,7 +53,6 @@ const confidenceData = [
   { name: 'Manual Fix', value: 10, fill: 'hsl(var(--destructive))' },
 ];
 
-
 // ======================================================
 //  DASHBOARD PAGE
 // ======================================================
@@ -62,95 +60,97 @@ export default function Dashboard() {
   const { analytics } = useInvoiceStore();
 
   const kpiCards = [
-    { title: 'Total Processed', value: analytics.totalProcessed.toLocaleString(), change:'+12%', trend:'up', icon: FileText, color:'primary' },
-    { title: 'Accuracy Rate', value: `${analytics.accuracyRate}%`, change:'+2.3%', trend:'up', icon: TrendingUp, color:'success' },
-    { title: 'Avg Process Time', value: `${analytics.avgProcessingTime}s`, change:'-0.5s', trend:'up', icon: Clock, color:'info' },
-    { title: 'Pending Review', value: analytics.pendingReview.toString(), change:'5 urgent', trend:'down', icon: AlertCircle, color:'warning' },
+    { title: 'Total Processed', value: analytics.totalProcessed.toLocaleString(), change:'+12%', trend:'up', icon: FileText, color:'--primary' },
+    { title: 'Accuracy Rate', value: `${analytics.accuracyRate}%`, change:'+2.3%', trend:'up', icon: TrendingUp, color:'--success' },
+    { title: 'Avg Process Time', value: `${analytics.avgProcessingTime}s`, change:'-0.5s', trend:'up', icon: Clock, color:'--info' },
+    { title: 'Pending Review', value: analytics.pendingReview.toString(), change:'5 urgent', trend:'down', icon: AlertCircle, color:'--warning' },
   ];
 
   const extraKPIs = [
-    { title:"Today's Invoices", value:"42", change:"+12", trend:'up', icon:Calendar, color:"info" },
-    { title:"Needs Review", value:"3", change:"-1", trend:'down', icon:AlertCircle, color:"warning" },
-    { title:"This Month", value:"$198K", change:"+8%", trend:'up', icon:DollarSign, color:"success" },
-    { title:"Avg AI Confidence", value:"91.2%", change:"+1.5%", trend:"up", icon:Cpu, color:"primary" },
+    { title:"Today's Invoices", value:"42", change:"+12", trend:'up', icon:Calendar, color:"--info" },
+    { title:"Needs Review", value:"3", change:"-1", trend:'down', icon:AlertCircle, color:"--warning" },
+    { title:"This Month", value:"$198K", change:"+8%", trend:'up', icon:DollarSign, color:"--success" },
+    { title:"Avg AI Confidence", value:"91.2%", change:"+1.5%", trend:"up", icon:Cpu, color:"--primary" },
   ];
 
-
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 pb-10">
 
       {/* HEADER */}
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}>
-        <h1 className="text-3xl font-bold">Welcome back, Vaibhavi! 👋</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold break-words">
+          Welcome back, Vaibhavi! 👋
+        </h1>
         <Badge variant="success" className="mt-1 flex items-center gap-1 w-fit">
-          <Flame className="w-4 h-4"/> 6 day streak — keep going!
+          <Flame className="w-4 h-4" /> 6 day streak — keep going!
         </Badge>
       </motion.div>
 
-
-
       {/* KPI ROW 1 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {kpiCards.map((kpi, i)=>(
-          <Card key={i}>
-            <CardContent className="p-6 flex justify-between">
-              <div>
+          <Card key={i} className="hover-lift">
+            <CardContent className="p-6 flex justify-between items-start">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">{kpi.title}</p>
-                <h2 className="text-3xl font-bold">{kpi.value}</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold truncate">{kpi.value}</h2>
                 <span className={`text-sm flex items-center gap-1 mt-1 ${kpi.trend==='up'?'text-success':'text-warning'}`}>
                   {kpi.trend==='up'?<ArrowUpRight/>:<ArrowDownRight/>} {kpi.change}
                 </span>
               </div>
-              <div className={`w-12 h-12 bg-${kpi.color}/10 rounded-xl flex justify-center items-center`}>
-                <kpi.icon className={`text-${kpi.color} w-6 h-6`}/>
+
+              <div
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex justify-center items-center"
+                style={{ background:`hsl(var(${kpi.color}) / .15)` }}
+              >
+                <kpi.icon className="w-5 h-5 sm:w-6 sm:h-6" style={{color:`hsl(var(${kpi.color}))`}}/>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
-
-
 
       {/* KPI ROW 2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {extraKPIs.map((kpi, i)=>(
-          <Card key={i}>
-            <CardContent className="p-6 flex justify-between">
-              <div>
+          <Card key={i} className="hover-lift">
+            <CardContent className="p-6 flex justify-between items-start">
+              <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">{kpi.title}</p>
-                <h2 className="text-2xl font-bold">{kpi.value}</h2>
+                <h2 className="text-xl sm:text-2xl font-bold truncate">{kpi.value}</h2>
                 <span className={`text-sm flex items-center gap-1 mt-1 ${kpi.trend==='up'?'text-success':'text-warning'}`}>
                   {kpi.trend==='up'?<ArrowUpRight/>:<ArrowDownRight/>} {kpi.change}
                 </span>
               </div>
-              <div className={`w-10 h-10 bg-${kpi.color}/10 rounded-xl flex justify-center items-center`}>
-                <kpi.icon className={`text-${kpi.color} w-5 h-5`}/>
+
+              <div
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex justify-center items-center"
+                style={{ background:`hsl(var(${kpi.color}) / .15)` }}
+              >
+                <kpi.icon className="w-4 h-4 sm:w-5 sm:h-5" style={{color:`hsl(var(${kpi.color}))`}}/>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
-
-
 
       {/* ACTION BUTTONS */}
       <Card>
-        <CardContent className="grid sm:grid-cols-4 gap-4 p-6 min-h-[100px] items-center">
-          <Link to="/upload"><Button variant="hero" className="w-full h-[60px] text-md gap-2 py-4 rounded-xl shadow-md"><Upload/> Upload Invoice</Button></Link>
-          <Link to="/review-queue"><Button variant="outline" className="w-full h-[60px] text-md gap-2 py-4 rounded-xl shadow-sm"><CheckSquare/> Review Queue</Button></Link>
-          <Link to="/analytics"><Button variant="outline" className="w-full h-[60px] text-md gap-2 py-4 rounded-xl shadow-sm"><BarChart3/> Analytics</Button></Link>
-          <Button variant="outline" className="w-full h-[60px] text-md gap-2 py-4 rounded-xl shadow-sm"><Download/> Export Data</Button>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-6">
+          <Link to="/upload"><Button className="w-full h-[55px] text-sm sm:text-md gap-2 py-3 rounded-xl shadow-md"><Upload/> Upload</Button></Link>
+          <Link to="/review-queue"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><CheckSquare/> Queue</Button></Link>
+          <Link to="/analytics"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><BarChart3/> Analytics</Button></Link>
+          <Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><Download/> Export</Button>
         </CardContent>
       </Card>
 
-
-
       {/* GRAPH + AI CONFIDENCE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
+        
+        {/* Chart */}
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="flex gap-2"><TrendingUp/>Volume Trend</CardTitle></CardHeader>
-          <CardContent className="h-[350px]"> {/* MATCH AI SIZE */}
+          <CardHeader><CardTitle className="flex gap-2"><TrendingUp/> Volume Trend</CardTitle></CardHeader>
+          <CardContent className="h-[260px] sm:h-[350px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={volumeData}>
                 <defs>
@@ -167,12 +167,11 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-
-        {/* AI CONFIDENCE */}
+        {/* Pie */}
         <Card>
-          <CardHeader><CardTitle className="flex gap-2"><Cpu/>AI Confidence</CardTitle></CardHeader>
-          <CardContent className="h-[350px] flex flex-col">
-            <div className="h-48">
+          <CardHeader><CardTitle className="flex gap-2"><Cpu/> AI Confidence</CardTitle></CardHeader>
+          <CardContent className="flex flex-col h-[260px] sm:h-[350px]">
+            <div className="flex-1 min-w-0">
               <ResponsiveContainer>
                 <PieChart>
                   <Pie data={confidenceData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={4}>
@@ -181,9 +180,9 @@ export default function Dashboard() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex flex-col gap-2 mt-5">
+            <div className="space-y-1 text-sm mt-3">
               {confidenceData.map((item,i)=>(
-                <div key={i} className="flex justify-between text-sm">
+                <div key={i} className="flex justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full" style={{background:item.fill}}/>
                     {item.name}
@@ -194,16 +193,16 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
       </div>
 
 
+      {/* ==== EVERYTHING ELSE BELOW THIS IS RESPONSIVE ALREADY ==== */}
 
-      {/* ROW: RECENT | FIELD ACCURACY | QUEUE + COST SAVINGS */}
+      {/* ROW: RECENT | FIELD ACCURACY | QUEUE + COST */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* RECENT ACTIVITY */}
-        <Card>
+        {/* RECENT */}
+        <Card className="min-w-0">
           <CardHeader className="flex justify-between">
             <CardTitle>Recent Activity</CardTitle>
             <Link to="/activity" className="text-primary text-sm">View All</Link>
@@ -216,8 +215,11 @@ export default function Dashboard() {
               ["INV-001237", "Gamma Co • $5,300", "Processing"],
               ["INV-001238", "Delta LLC • $31,200", "Failed"],
             ].map(([id,vendor,status],i)=>(
-              <div key={i} className="flex justify-between">
-                <div><b>{id}</b><p className="text-muted-foreground">{vendor}</p></div>
+              <div key={i} className="flex justify-between gap-3">
+                <div className="truncate">
+                  <b className="truncate block">{id}</b>
+                  <p className="text-muted-foreground truncate">{vendor}</p>
+                </div>
                 <Badge variant={
                   status==="Approved"?"success":
                   status==="Review"?"warning":
@@ -228,8 +230,6 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-
-
 
         {/* FIELD ACCURACY */}
         <Card>
@@ -250,12 +250,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-
-
-        {/* PROCESSING QUEUE + COST SAVINGS BELOW */}
+        {/* PROCESSING + COST */}
         <div className="space-y-4">
 
-          <Card className="h-[210px]"> {/* reduced */}
+          <Card>
             <CardHeader><CardTitle>Processing Queue</CardTitle></CardHeader>
             <CardContent className="text-sm space-y-2">
               <div className="flex justify-between"><span>In queue</span><b>12</b></div>
@@ -265,27 +263,23 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-primary text-primary-foreground h-[160px] ">
+          <Card className="bg-primary text-primary-foreground">
             <CardContent className="p-4 space-y-1">
               <div className="flex gap-2 text-md"><Database className="w-4 h-4"/> Cost Savings</div>
               <h2 className="text-2xl font-bold">${analytics.costSaved.toLocaleString()}</h2>
               <p className="text-sm opacity-80">Automation vs Manual</p>
-              <div className="text-sm border-t pt-1 mt-1 flex justify-between opacity-80">
+              <div className="text-sm border-t pt-1 mt-1 flex justify-between opacity-90">
                 <span>Per invoice</span><b>$36.30</b>
               </div>
             </CardContent>
           </Card>
-
         </div>
-
       </div>
-
 
 
       {/* TOP VENDORS + MONTHLY VOLUME */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* TOP VENDORS */}
         <Card>
           <CardHeader><CardTitle>Top Vendors</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
@@ -296,7 +290,7 @@ export default function Dashboard() {
               ["Gamma Co",28,"$62,800","+15%"],
               ["Delta LLC",25,"$54,300","+5%"],
             ].map(([name,count,val,change],i)=>(
-              <div key={i} className="flex justify-between">
+              <div key={i} className="flex justify-between gap-3">
                 <div><b>{i+1}. {name}</b><p className="text-muted-foreground text-xs">{count} invoices</p></div>
                 <div className="text-right"><b>{val}</b><p className={`text-xs ${change.includes('-')?'text-destructive':'text-success'}`}>{change}</p></div>
               </div>
@@ -304,10 +298,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* MONTHLY VOLUME */}
-        <Card>
-          <CardHeader><CardTitle>Monthly Invoice Volume</CardTitle></CardHeader>
-          <CardContent className="h-64">
+        <Card className="min-w-0">
+          <CardHeader><CardTitle>Monthly Volume</CardTitle></CardHeader>
+          <CardContent className="h-[250px] sm:h-[300px] min-w-0">
             <ResponsiveContainer>
               <BarChart data={[
                 {month:'Jul',val:140000},
@@ -324,9 +317,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-
       </div>
-
     </div>
   );
 }

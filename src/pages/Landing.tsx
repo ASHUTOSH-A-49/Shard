@@ -51,33 +51,27 @@ export default function Landing() {
 
       {/* NAVBAR */}
       <header className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow">
-              <FileText className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-xl text-foreground">InvoiceAI</span>
-          </Link>
+  <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+    <Link to="/" className="flex items-center gap-1 min-w-0 flex-shrink">
+      <img src="\src\assets\logo2.png" alt="InvoiceAILogo" className="w-10 h-10 object-contain" />
+      <span className="font-bold text-lg sm:text-xl text-foreground truncate">InvoiceAI</span>
+    </Link>
 
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={toggleTheme}>
-              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
-            </Button>
+    <div className="hidden sm:flex items-center gap-3">
+      <Button variant="outline" size="icon" onClick={toggleTheme}>
+        {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+      </Button>
+      <Link to="/auth"><Button variant="ghost">Login</Button></Link>
+      <Link to="/auth"><Button variant="hero">Get Started</Button></Link>
+    </div>
 
-            <Link to="/dashboard">
-              <Button variant="ghost">Dashboard</Button>
-            </Link>
+    {/* Mobile CTA */}
+    <div className="sm:hidden flex items-center gap-2">
+      <Link to="/auth"><Button size="sm">Sign in</Button></Link>
+    </div>
+  </div>
+</header>
 
-            <Link to="/auth">
-              <Button variant="ghost">Login</Button>
-            </Link>
-
-            <Link to="/auth">
-              <Button variant="hero">Get Started</Button>
-            </Link>
-          </div>
-        </div>
-      </header>
 
       {/* HERO */}
       <section className="pt-32 pb-20 px-4">
@@ -105,7 +99,6 @@ export default function Landing() {
                   Start Processing <ArrowRight className="w-5 h-5" />
                 </Button>
               </Link>
-
               <Link to="/auth">
                 <Button variant="outline" size="xl">
                   Live Demo
@@ -197,20 +190,42 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 px-4">
-        <div className="container mx-auto">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="bg-primary rounded-3xl p-8 md:p-12 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4">Ready to Automate?</h2>
-            <p className="text-primary-foreground/80 max-w-xl mx-auto mb-8">Start processing invoices in seconds. No login required.</p>
+      {/* CTA */}
+<section className="py-16 px-4">
+  <div className="container mx-auto">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      whileInView={{ opacity: 1, scale: 1 }}
+      viewport={{ once: true }}
+      className="
+        bg-primary rounded-3xl 
+        p-6 sm:p-10 md:p-12 
+        text-center
+        space-y-4
+      "
+    >
+      <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-primary-foreground leading-snug">
+        Ready to Automate?
+      </h2>
 
-            <Link to="/auth">
-              <Button variant="secondary" size="xl">
-                Get Started — It's Free <ArrowRight className="w-5 h-5" />
-              </Button>
-            </Link>
-          </motion.div>
-        </div>
-      </section>
+      <p className="text-primary-foreground/90 max-w-md mx-auto text-sm sm:text-base">
+        Start processing invoices instantly — no login needed for demo.
+      </p>
+
+      <Link to="/auth">
+        <Button 
+          variant="secondary" 
+          size="lg"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 text-base sm:text-lg"
+        >
+          Get Started — It's Free
+          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+        </Button>
+      </Link>
+    </motion.div>
+  </div>
+</section>
+
 
       {/* FOOTER */}
       <footer className="py-8 px-4 border-t border-border">

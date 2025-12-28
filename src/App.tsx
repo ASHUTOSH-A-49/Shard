@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { useThemeStore } from "@/store/themeStore";
 import Landing from "./pages/Landing";
-import Auth from "./pages/Auth";
+import Auth from "@/pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
 import Processing from "./pages/Processing";
