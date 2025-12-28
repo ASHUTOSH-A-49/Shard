@@ -1,3 +1,4 @@
+// src/pages/Analytics.tsx
 import { motion } from 'framer-motion';
 import {
   FileText,
@@ -28,6 +29,7 @@ import {
   Bar,
 } from 'recharts';
 
+// ===================== DATA =====================
 const volumeData = [
   { name: 'Week 1', invoices: 245 },
   { name: 'Week 2', invoices: 312 },
@@ -66,6 +68,8 @@ const topVendors = [
   { name: 'Innovation Labs', count: 98 },
 ];
 
+// =================================================
+
 export default function Analytics() {
   const kpis = [
     { title: 'Total Processed', value: '1,247', icon: FileText, change: '+156 this week' },
@@ -76,8 +80,9 @@ export default function Analytics() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-8 pb-24 px-4 sm:px-6 md:px-0">
+
+      {/* HEADER */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -85,28 +90,25 @@ export default function Analytics() {
       >
         <div>
           <h1 className="text-3xl font-bold text-foreground">Analytics</h1>
-          <p className="text-muted-foreground mt-1">
-            Track your invoice processing performance
-          </p>
+          <p className="text-muted-foreground mt-1">Track your invoice processing performance</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="w-4 h-4" />
-            PDF
+
+        {/* Responsive Export Buttons */}
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          <Button variant="outline" className="flex-1 sm:flex-none">
+            <Download className="w-4 h-4" /> PDF
           </Button>
-          <Button variant="outline">
-            <FileJson className="w-4 h-4" />
-            Excel
+          <Button variant="outline" className="flex-1 sm:flex-none">
+            <FileJson className="w-4 h-4" /> Excel
           </Button>
-          <Button variant="outline">
-            <Mail className="w-4 h-4" />
-            Email Report
+          <Button variant="outline" className="flex-1 sm:flex-none">
+            <Mail className="w-4 h-4" /> Email
           </Button>
         </div>
       </motion.div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* KPI GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {kpis.map((kpi, index) => (
           <motion.div
             key={kpi.title}
@@ -115,12 +117,12 @@ export default function Analytics() {
             transition={{ delay: index * 0.1 }}
           >
             <Card hover>
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <div className="flex items-center gap-2 mb-2">
                   <kpi.icon className="w-4 h-4 text-primary" />
                   <span className="text-xs text-muted-foreground">{kpi.title}</span>
                 </div>
-                <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
+                <p className="text-2xl font-bold">{kpi.value}</p>
                 <p className="text-xs text-muted-foreground mt-1">{kpi.change}</p>
               </CardContent>
             </Card>
@@ -128,221 +130,118 @@ export default function Analytics() {
         ))}
       </div>
 
-      {/* Charts Row 1 */}
+      {/* ROW 1 - ANALYTICS */}
       <div className="grid lg:grid-cols-2 gap-6">
+
         {/* Volume Over Time */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Volume Over Time</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={volumeData}>
-                    <defs>
-                      <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="invoices"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      fill="url(#volumeGradient)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        <Card className="overflow-hidden">
+          <CardHeader><CardTitle>Volume Over Time</CardTitle></CardHeader>
+          <CardContent className="w-full overflow-x-auto">
+            <div className="min-w-[500px] sm:min-w-0 h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={volumeData}>
+                  <defs>
+                    <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="invoices" stroke="hsl(var(--primary))" fill="url(#volumeGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Status Breakdown */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Status Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64 flex items-center">
-                <div className="w-1/2">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={statusBreakdown}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={80}
-                        paddingAngle={2}
-                        dataKey="value"
-                      >
-                        {statusBreakdown.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+        <Card className="overflow-hidden">
+          <CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader>
+          <CardContent className="h-64 flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex-1 min-w-[260px]">
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={statusBreakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
+                    {statusBreakdown.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 space-y-2">
+              {statusBreakdown.map((item) => (
+                <div key={item.name} className="flex justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ background: item.fill }} />
+                    {item.name}
+                  </div>
+                  <b>{item.value}</b>
                 </div>
-                <div className="w-1/2 space-y-2">
-                  {statusBreakdown.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.fill }} />
-                        <span className="text-sm text-foreground">{item.name}</span>
-                      </div>
-                      <span className="text-sm font-medium text-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Charts Row 2 */}
+      {/* ROW 2 */}
       <div className="grid lg:grid-cols-2 gap-6">
+
         {/* Field Accuracy */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Accuracy by Field</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={accuracyByField} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis type="number" domain={[0, 100]} stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis dataKey="name" type="category" stroke="hsl(var(--muted-foreground))" fontSize={12} width={80} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => [`${value}%`, 'Accuracy']}
-                    />
-                    <Bar
-                      dataKey="accuracy"
-                      fill="hsl(var(--primary))"
-                      radius={[0, 4, 4, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Processing Time Trend */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Processing Time Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={processingTimeData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number) => [`${value}s`, 'Avg Time']}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="time"
-                      stroke="hsl(var(--info))"
-                      strokeWidth={2}
-                      dot={{ fill: 'hsl(var(--info))' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Top Vendors */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.9 }}
-      >
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Top Vendors by Invoice Count</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
+          <CardHeader><CardTitle>Accuracy by Field</CardTitle></CardHeader>
+          <CardContent className="overflow-x-auto">
+            <div className="min-w-[500px] sm:min-w-0 h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topVendors}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="hsl(var(--primary))"
-                    radius={[4, 4, 0, 0]}
-                  />
+                <BarChart data={accuracyByField} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis dataKey="name" type="category" width={90} />
+                  <Tooltip />
+                  <Bar dataKey="accuracy" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
-      </motion.div>
+
+        {/* Processing Time */}
+        <Card>
+          <CardHeader><CardTitle>Processing Time Trend</CardTitle></CardHeader>
+          <CardContent className="h-64 overflow-x-auto">
+            <div className="min-w-[420px] sm:min-w-0 h-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={processingTimeData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip formatter={(val: number) => `${val}s`} />
+                  <Line type="monotone" dataKey="time" stroke="hsl(var(--info))" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* TOP VENDORS */}
+      <Card>
+        <CardHeader><CardTitle>Top Vendors by Invoice Count</CardTitle></CardHeader>
+        <CardContent className="overflow-x-auto">
+          <div className="min-w-[500px] sm:min-w-0 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topVendors}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" fontSize={12} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
