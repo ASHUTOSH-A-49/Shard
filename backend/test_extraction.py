@@ -7,7 +7,7 @@ URL = "http://127.0.0.1:5000/api/extract"
 
 # Path to a real invoice image on your machine for testing
 # Example: "sample_invoice.jpg" or "data/invoice_test.png"
-FILE_PATH = "./assets/sample_invoices/test_reciept_shourya_2.jpg"
+FILE_PATH = "./assets/sample_invoices/my_invoice_blur_1.jpeg"
 
 def run_test():
     try:
