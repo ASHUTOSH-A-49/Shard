@@ -1,0 +1,15 @@
+# Virtual environment
+venv/
+backend/venv/
+.venv/
+ENV/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env secrets
+.env
+.env.*
