@@ -14,6 +14,7 @@ import History from "./pages/History";
 import { AppLayout } from "./components/layout/AppLayout";
 import NotFound from "./pages/NotFound";
 import InvoiceDetails from "./pages/InvoiceDetails";
+import Analytics from "./pages/Analytics";
 
 
 const queryClient = new QueryClient();
@@ -45,9 +46,9 @@ const App = () => (
       <Route path="/upload" element={<Upload />} />
 
       {/* 🔥 ADD THIS FOR INVOICE DETAILS */}
-      <Route path="/processing/inv/:invoiceId" element={<InvoiceDetails />} />
-      
+      <Route path="/processing/inv/:invoiceId" element={<InvoiceDetails />} />      
       <Route path="/review-queue" element={<ReviewQueue />} />
+      <Route path="/analytics" element={<Analytics />} />
       <Route path="/history" element={<History />} />
     </Route>
 
