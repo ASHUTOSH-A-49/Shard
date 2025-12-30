@@ -71,6 +71,7 @@ RULES:
 
             response_text = chat_completion.choices[0].message.content
             extracted_data = json.loads(response_text)
+
             
             # Capture usage stats for rate-limit management
             usage = chat_completion.usage

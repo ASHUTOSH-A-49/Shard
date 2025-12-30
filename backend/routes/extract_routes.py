@@ -82,9 +82,8 @@ def extract_invoice():
     except:
         return jsonify({"error": "Invalid test token format"}), 401
 
-    
 
-    print(f"user id is: {user_id}")
+    # print(f"user id is: {user_id}")
     # ==========================================================
     # 2️⃣ SAFETY CHECK: FILE VALIDATION
     # ==========================================================
