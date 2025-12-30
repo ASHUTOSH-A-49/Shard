@@ -12,7 +12,9 @@ import {
   Receipt,
   Building2,
   CalendarDays,
-  Zap
+  Zap,
+  UserCheck,
+  UserX
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +37,8 @@ interface InvoiceDetails extends Invoice {
   discount?: number;
   lineItems?: LineItem[];
   rawStatus?: string; 
+  approvedBy?: string; 
+  approvedAt?: string; 
 }
 
 export default function ActivityLog() {
@@ -67,63 +71,54 @@ export default function ActivityLog() {
 
           const dbInvoices: InvoiceDetails[] = res.data.invoices.map((doc: any) => {
             
-            // ---------------------------------------------------------
             // 1. EXTRACT DATA 
-            // ---------------------------------------------------------
             const extracted = doc.extracted_data || {};
             const canonical = doc.canonical_data || {};
             const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
             const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
             const pricing = extracted.pricing_summary || canonical.pricing_summary || {};
             
-            // Search for confidence scores in all possible locations
             const confScores = doc.confidence_scores || extracted.confidence_scores || canonical.confidence_scores || {};
 
-            // --- A. Company Name Logic ---
+            // A. Company Name Logic
             const displayVendor = 
               metadata.company_name || 
               vendorInfo.vendor_name || 
               "Unknown Vendor";
 
-            // --- B. STATUS LOGIC (Updated Rule: < 85% = Needs Review) ---
-            const dbStatusRaw = confScores.field_confidence?.status?.toLowerCase() || '';
+            // B. STATUS LOGIC
+            const dbStatusRaw = doc.status || confScores.status || confScores.field_confidence?.status || '';
             const confidence = confScores.overall_confidence || 0;
 
             let finalStatus: Invoice['status'] = 'approved';
 
-            // 1. Priority: Explicit Rejection
             if (dbStatusRaw === 'rejected') {
                 finalStatus = 'rejected';
-            } 
-            // 2. Priority: Explicit Database Flag
-            else if (dbStatusRaw === 'needs_review' || dbStatusRaw === 'review_needed') {
+            } else if (dbStatusRaw === 'approved') {
+                finalStatus = 'approved';
+            } else if (dbStatusRaw === 'needs_review' || dbStatusRaw === 'review_needed') {
                 finalStatus = 'pending_review';
-            }
-            // 3. Priority: Confidence Threshold (User Rule: < 85 is Needs Review)
-            else if (confidence < 85) {
+            } else if (confidence < 85) {
                 finalStatus = 'pending_review';
-            }
-            // 4. Priority: High Confidence (>= 85 is Auto-Approved)
-            else {
+            } else {
                 finalStatus = 'auto_approved';
             }
 
-            // --- C. Helper: Number Parser ---
+            // C. Helper: Number Parser
             const parseNum = (val: any) => {
               if (typeof val === 'number') return val;
               if (typeof val === 'string') return parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0;
               return 0;
             };
 
-            // --- D. Amounts & Currency ---
+            // D. Amounts & Currency
             const rawTotal = pricing.total_amount || metadata.total_amount || 0;
             const rawSubtotal = pricing.subtotal || metadata.subtotal || 0;
-            
             const amountValue = parseNum(rawTotal);
             const subtotalValue = parseNum(rawSubtotal);
             const currency = pricing.currency || metadata.currency || "USD";
 
-            // --- E. Line Items ---
+            // E. Line Items
             const rawItems = extracted.items || canonical.items || []; 
             const lineItems = Array.isArray(rawItems) ? rawItems.map((item: any) => ({
                 description: item.item_name || item.description || "Item",
@@ -132,13 +127,13 @@ export default function ActivityLog() {
                 amount: parseNum(item.line_total || item.amount || item.total || 0)
             })) : [];
 
-            // --- F. Tax Logic ---
+            // F. Tax Logic
             let taxValue = parseNum(pricing.tax);
             if (!taxValue && amountValue > subtotalValue) {
                taxValue = amountValue - subtotalValue;
             }
 
-            // --- G. Dates ---
+            // G. Dates
             const processedDate = doc.created_at || doc.updated_at || new Date().toISOString();
             const invoiceDate = metadata.date || processedDate;
 
@@ -155,18 +150,16 @@ export default function ActivityLog() {
               extractedData: extracted,
               createdAt: processedDate,
               updatedAt: doc.updated_at || new Date().toISOString(),
-              
-              // Extra Details for Modal
               subtotal: subtotalValue,
               tax: taxValue,
               discount: 0, 
-              lineItems: lineItems
+              lineItems: lineItems,
+              approvedBy: doc.approved_by, 
+              approvedAt: doc.approved_at
             };
           });
 
-          // Sort: Newest First
           dbInvoices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
           setInvoices([...processingItems, ...dbInvoices]);
         }
       } catch (error) {
@@ -179,7 +172,6 @@ export default function ActivityLog() {
     fetchInvoices();
   }, [setInvoices, user]);
 
-  // 🛡️ LOADING STATE
   if (loading && invoices.length === 0) {
     return (
       <div className="flex justify-center items-center h-96">
@@ -252,7 +244,7 @@ export default function ActivityLog() {
                       inv.status === 'processing' ? "bg-emerald-500/10 text-emerald-600" : 
                       inv.status === 'pending_review' ? "bg-amber-500/10 text-amber-600" :
                       inv.status === 'rejected' ? "bg-red-500/10 text-red-600" :
-                      "bg-emerald-500/10 text-emerald-600"
+                      "bg-blue-500/10 text-blue-600"
                     )}>
                       {inv.status === 'processing' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
                        inv.status === 'pending_review' ? <AlertCircle className="w-5 h-5" /> : 
@@ -268,14 +260,30 @@ export default function ActivityLog() {
                         {inv.status !== 'processing' && renderStatusBadge(inv.status)}
                       </div>
                       
-                      <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <FileText className="w-3 h-3" /> {inv.fileName}
-                        </span>
+                      <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground items-center">
+                        {/* Filename removed here */}
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> 
-                          {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : "N/A"}
+                          {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "N/A"}
                         </span>
+                        
+                        {/* APPROVED / REJECTED INFO */}
+                        {inv.approvedBy && (
+                          <>
+                            {inv.status === 'approved' && (
+                              <span className="flex items-center gap-1 text-blue-600/80 bg-blue-50 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-100 whitespace-normal">
+                                <UserCheck className="w-3 h-3 flex-shrink-0" /> 
+                                Approved by {inv.approvedBy}
+                              </span>
+                            )}
+                            {inv.status === 'rejected' && (
+                              <span className="flex items-center gap-1 text-red-600/80 bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium border border-red-100 whitespace-normal">
+                                <UserX className="w-3 h-3 flex-shrink-0" /> 
+                                Rejected by {inv.approvedBy}
+                              </span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -412,6 +420,18 @@ export default function ActivityLog() {
                       <span>Total</span>
                       <span>{selectedInvoice.currency} {selectedInvoice.amount?.toFixed(2)}</span>
                     </div>
+                    
+                    {/* Approval Info in Modal */}
+                    {selectedInvoice.approvedBy && (
+                      <div className={cn(
+                        "p-2 rounded text-xs mt-2 flex items-center gap-2 border",
+                        selectedInvoice.status === 'rejected' ? "bg-red-50 text-red-700 border-red-100" : "bg-blue-50 text-blue-700 border-blue-100"
+                      )}>
+                        {selectedInvoice.status === 'rejected' ? <UserX className="w-3 h-3"/> : <UserCheck className="w-3 h-3" />}
+                        {selectedInvoice.status === 'rejected' ? "Rejected" : "Approved"} by <b>{selectedInvoice.approvedBy}</b>
+                      </div>
+                    )}
+
                     <div className="flex justify-between text-xs mt-2">
                       <span className="text-muted-foreground">AI Confidence</span>
                       <Badge variant={selectedInvoice.confidence > 80 ? 'success' : 'warning'}>

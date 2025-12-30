@@ -8,7 +8,7 @@ export interface Invoice {
   amount: number;
   currency: string;
   date: string;
-  status: 'processing' | 'pending_review' | 'approved' | 'rejected' | 'failed';
+  status: 'processing' | 'pending_review' | 'approved' | 'rejected' | 'failed' | 'auto_approved';
   confidence: number;
   extractedData?: {
     invoiceNumber?: string;

@@ -30,7 +30,7 @@ class ConfidenceScorer:
 
     # Confidence thresholds
     CONFIDENCE_THRESHOLDS = {
-        'auto_approve': 0.85,  # ≥85% = auto approve
+        'auto_approve': 0.90,  # ≥90% = auto approve
         'needs_review': 0.60,  # 60-84% = needs human review
         'low_confidence': 0.50, # <50% = likely errors
     }

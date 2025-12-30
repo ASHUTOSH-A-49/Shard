@@ -67,19 +67,35 @@ export default function Dashboard() {
   // 🧮 CALCULATE STATS
   const stats = useMemo(() => {
     const total = invoices.length;
-    const approved = invoices.filter(i => i.status === 'approved' || i.status === 'auto_approved').length;
-    const review = invoices.filter(i => i.status === 'pending_review' || i.status === 'needs_review').length;
     
+    // Status counts
+    const autoApproved = invoices.filter(i => i.status === 'auto_approved').length;
+    const manualApproved = invoices.filter(i => i.status === 'approved').length;
+    const rejected = invoices.filter(i => i.status === 'rejected').length;
+    const review = invoices.filter(i => i.status === 'pending_review' || i.status === 'needs_review' || i.status === 'review_needed').length;
+    
+    // 💡 Human Approval Rate Logic:
+    // Only count invoices that went through manual review (Approved or Rejected by human)
+    // Exclude auto-approved and pending ones from this specific metric.
+    const humanReviewedTotal = manualApproved + rejected;
+    const approvalRate = humanReviewedTotal > 0 
+        ? ((manualApproved / humanReviewedTotal) * 100).toFixed(0) 
+        : "0";
+
     // Average Confidence
-    const totalConf = invoices.reduce((acc, inv) => acc + (inv.confidence_scores?.overall_confidence || 0), 0);
+    const totalConf = invoices.reduce((acc, inv) => {
+        // Handle nested or flat structure
+        const score = inv.confidence_scores?.overall_confidence || inv.confidence || 0;
+        return acc + score;
+    }, 0);
     const avgConf = total > 0 ? (totalConf / total).toFixed(1) : "0.0";
 
     return {
       total,
-      approved,
+      approvedCount: manualApproved + autoApproved, // For display count
       review,
       avgConf,
-      approvalRate: total > 0 ? ((approved / total) * 100).toFixed(0) : "0",
+      approvalRate, // Human review rate
     };
   }, [invoices]);
 
@@ -120,7 +136,8 @@ export default function Dashboard() {
                    inv.extracted_data?.invoice_metadata?.company_name || 
                    "Unknown Vendor";
                    
-      const rawAmount = inv.canonical_data?.total_amount?.value || 0;
+      const rawAmount = inv.canonical_data?.total_amount?.value || 
+                        inv.extracted_data?.pricing_summary?.total_amount || 0;
       
       // FIX: Robust Parsing (removes '$', ',', etc before parsing)
       let amountVal = 0;
@@ -142,11 +159,19 @@ export default function Dashboard() {
   }, [invoices]);
 
   // 🥧 STATUS CHART DATA
-  const confidenceData = [
-    { name: 'Approved', value: stats.approved, fill: 'hsl(var(--success))' },
-    { name: 'Review', value: stats.review, fill: 'hsl(var(--warning))' },
-    { name: 'Rejected', value: invoices.filter(i => i.status === 'rejected').length, fill: 'hsl(var(--destructive))' },
-  ];
+  const confidenceData = useMemo(() => {
+      const auto = invoices.filter(i => i.status === 'auto_approved').length;
+      const manual = invoices.filter(i => i.status === 'approved').length;
+      const review = invoices.filter(i => i.status === 'pending_review' || i.status === 'needs_review' || i.status === 'review_needed').length;
+      const rejected = invoices.filter(i => i.status === 'rejected').length;
+
+      return [
+        { name: 'Auto-Approved', value: auto, fill: 'hsl(var(--success))' },
+        { name: 'Manually Approved', value: manual, fill: '#3b82f6' }, // Blue
+        { name: 'Review', value: review, fill: 'hsl(var(--warning))' },
+        { name: 'Rejected', value: rejected, fill: 'hsl(var(--destructive))' },
+      ].filter(d => d.value > 0);
+  }, [invoices]);
 
   if (loading) {
     return (
@@ -169,12 +194,33 @@ export default function Dashboard() {
         </Badge>
       </motion.div>
 
-      {/* KPI ROW - Updated to 3 columns since Cost Savings is removed */}
+      {/* KPI ROW */}
       <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-4">
         {[
-          { title: 'Total Processed', value: stats.total, change:'All time', trend:'up', icon: FileText, color:'--primary' },
-          { title: 'Approval Rate', value: `${stats.approvalRate}%`, change:'Efficiency', trend:'up', icon: TrendingUp, color:'--success' },
-          { title: 'Pending Review', value: stats.review, change:'Action Needed', trend: stats.review > 0 ? 'down' : 'up', icon: AlertCircle, color:'--warning' },
+          { 
+            title: 'Total Processed', 
+            value: stats.total, 
+            change:'All time', 
+            trend:'up', 
+            icon: FileText, 
+            color:'--primary' 
+          },
+          { 
+            title: 'Human Approval Rate', 
+            value: `${stats.approvalRate}%`, 
+            change:'Of reviewed items', 
+            trend:'up', 
+            icon: TrendingUp, 
+            color:'--success' 
+          },
+          { 
+            title: 'Pending Review', 
+            value: stats.review, 
+            change:'Action Needed', 
+            trend: stats.review > 0 ? 'down' : 'up', 
+            icon: AlertCircle, 
+            color:'--warning' 
+          },
         ].map((kpi, i)=>(
           <Card key={i} className="hover-lift">
             <CardContent className="p-6 flex justify-between items-start">
@@ -274,6 +320,7 @@ export default function Dashboard() {
                   <strong>{item.value}</strong>
                 </div>
               ))}
+              {confidenceData.length === 0 && <p className="text-muted-foreground text-center">No data yet</p>}
             </div>
           </CardContent>
         </Card>
@@ -305,10 +352,10 @@ export default function Dashboard() {
                    </div>
                 </div>
                 <Badge variant={
-                  (inv.status?.includes("approved") || (inv.confidence_scores?.overall_confidence > 80)) ?"success":
+                  (inv.status?.includes("approved")) ?"success":
                   inv.status?.includes("review")?"warning": "destructive"
                 }>
-                  {inv.confidence_scores?.overall_confidence?.toFixed(0)}% Conf.
+                  {(inv.confidence_scores?.overall_confidence || 0).toFixed(0)}% Conf.
                 </Badge>
               </div>
             ))}

@@ -1,6 +1,6 @@
-// src/pages/ReviewQueue.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios";
 import {
   Search,
   CheckCircle,
@@ -8,274 +8,408 @@ import {
   AlertTriangle,
   X,
   Clock,
+  Calendar,
+  DollarSign,
+  Building2,
+  FileText,
+  Loader2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
-import { processedInvoices } from "./History";
+import { useAuth } from "@/hooks/useAuth";
 
-const mockReviewItems = [
-  {
-    id: "1",
-    invoiceNumber: "INV-20240003",
-    vendor: "Office Essentials",
-    amount: 14752.81,
-    date: "2024-01-15",
-    dueDate: "2024-02-15",
-    confidence: 72,
-    priority: "Medium",
-    status: "Needs Review",
-    timeLeft: "10h remaining",
-    fields: [
-      { name: "Invoice Number", value: "INV-20240003", confidence: 98, original: "INV-20240003" },
-      { name: "Vendor Name", value: "Office Essentials", confidence: 95, original: "Office Essentials" },
-      { name: "Total Amount", value: "$14,752.81", confidence: 68, original: "$14752.81" },
-      { name: "Due Date", value: "2024-02-15", confidence: 45, original: "15/02/24" },
-    ],
-  },
-  {
-    id: "2",
-    invoiceNumber: "INV-20240005",
-    vendor: "DataPro Systems",
-    amount: 17382.46,
-    date: "2024-01-14",
-    dueDate: "2024-02-10",
-    confidence: 58,
-    priority: "Medium",
-    status: "Needs Review",
-    timeLeft: "17h remaining",
-    fields: [
-      { name: "Invoice Number", value: "INV-20240005", confidence: 92, original: "INV-20240005" },
-      { name: "Vendor Name", value: "DataPro Systems", confidence: 88, original: "DataPro Systems" },
-      { name: "Total Amount", value: "$17,382.46", confidence: 42, original: "17382.46" },
-      { name: "Tax Amount", value: "$288.00", confidence: 35, original: "N/A" },
-    ],
-  },
-];
+// --- Types matching your DB structure ---
+interface LineItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+}
+
+interface ReviewInvoice {
+  id: string;
+  companyName: string;
+  invoiceNumber: string;
+  amount: number;
+  currency: string;
+  date: string;
+  confidenceLevel: 'low' | 'medium' | 'high';
+  confidenceScore: number;
+  status: string;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  lineItems: LineItem[];
+  rawDate: string; // for sorting/display
+}
 
 export default function ReviewQueue() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [reviewPanel, setReviewPanel] = useState<(typeof mockReviewItems)[0] | null>(null);
-  const [confidenceRange, setConfidenceRange] = useState([0, 100]);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState<ReviewInvoice[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const navigate = useNavigate();
+  const [reviewItem, setReviewItem] = useState<ReviewInvoice | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const filteredItems = mockReviewItems.filter(
-    (item) =>
-      item.confidence >= confidenceRange[0] &&
-      item.confidence <= confidenceRange[1] &&
-      (searchQuery === "" ||
-        item.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+  // 👇 FETCH DATA
+  useEffect(() => {
+    const fetchQueue = async () => {
+      if (!user?.email) return;
+
+      try {
+        const token = JSON.stringify({ userId: user.id, email: user.email });
+        const res = await axios.get("http://localhost:5000/api/invoices", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.data.success) {
+          const queueItems = res.data.invoices
+            .map((doc: any) => {
+              // 1. Extract Data
+              const extracted = doc.extracted_data || {};
+              const canonical = doc.canonical_data || {};
+              const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
+              const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
+              const pricing = extracted.pricing_summary || canonical.pricing_summary || {};
+              const confScores = doc.confidence_scores || {};
+              const fieldConf = confScores.field_confidence || {};
+
+              // 2. Status Check: STRICTLY "needs_review"
+              const status = confScores.status?.toLowerCase();
+              if (status !== 'needs_review' && status !== 'review_needed') return null;
+
+              // 3. Map Fields
+              const companyName = metadata.company_name || vendorInfo.vendor_name || "Unknown Vendor";
+              const invNum = metadata.invoice_number || "N/A";
+              
+              const parseNum = (val: any) => typeof val === 'string' ? parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0 : val || 0;
+              
+              const totalAmount = parseNum(pricing.total_amount || metadata.total_amount);
+              const subtotal = parseNum(pricing.subtotal || metadata.subtotal);
+              const tax = parseNum(pricing.tax?.tax_amount); // Fallback logic handled in UI if needed
+              const discount = parseNum(pricing.total_discount || 0);
+
+              // 4. Line Items
+              const rawItems = extracted.items || canonical.items || [];
+              const lineItems = Array.isArray(rawItems) ? rawItems.map((item: any) => ({
+                description: item.item_name || item.description || "Item",
+                quantity: parseNum(item.quantity || 1),
+                unit_price: parseNum(item.unit_price || item.price || 0),
+                amount: parseNum(item.line_total || item.amount || item.total || 0)
+              })) : [];
+
+              return {
+                id: doc._id,
+                companyName,
+                invoiceNumber: invNum,
+                amount: totalAmount,
+                currency: pricing.currency || "USD",
+                date: metadata.date || doc.created_at,
+                rawDate: doc.created_at || new Date().toISOString(),
+                confidenceLevel: fieldConf.confidence_level || 'medium',
+                confidenceScore: confScores.overall_confidence || 0,
+                status: status,
+                subtotal,
+                tax,
+                discount,
+                lineItems
+              };
+            })
+            .filter((item: any) => item !== null); // Remove nulls (non-review items)
+
+          setInvoices(queueItems);
+        }
+      } catch (error) {
+        console.error("Queue fetch error:", error);
+        toast.error("Failed to load review queue");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQueue();
+  }, [user]);
+
+  // 👇 HANDLE DECISION (Approve/Reject)
+  const handleDecision = async (id: string, decision: 'approved' | 'rejected') => {
+    if (!user) return;
+    setProcessingId(id);
+
+    try {
+      const token = JSON.stringify({ userId: user.id, email: user.email });
+      
+      // Call Backend API to update status
+      await axios.put(
+        `http://localhost:5000/api/invoices/${id}/status`, 
+        { 
+          status: decision,
+          approved_by: user.name || user.email // Log who approved it
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // UI Updates
+      toast.success(`Invoice ${decision === 'approved' ? 'Approved' : 'Rejected'} successfully`);
+      setInvoices(prev => prev.filter(inv => inv.id !== id)); // Remove from list
+      setReviewItem(null); // Close modal
+
+    } catch (error) {
+      console.error("Update failed:", error);
+      toast.error("Failed to update invoice status");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Filter Logic
+  const filteredInvoices = invoices.filter(inv => 
+    inv.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    inv.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getConfidenceTint = (c: number) => {
-    if (c >= 85) return "text-emerald-600 bg-emerald-500/20 dark:text-emerald-500 dark:bg-emerald-500/10";
-    if (c >= 60) return "text-amber-600 bg-amber-500/20 dark:text-amber-500 dark:bg-amber-500/10";
-    return "text-red-600 bg-red-500/20 dark:text-red-500 dark:bg-red-500/10";
+  const getLevelColor = (level: string) => {
+    switch(level) {
+      case 'high': return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      case 'medium': return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case 'low': return "bg-red-500/10 text-red-500 border-red-500/20";
+      default: return "bg-gray-500/10 text-gray-500";
+    }
   };
 
-  const handleApprove = (item: (typeof mockReviewItems)[0]) => {
-    toast.success("Invoice approved successfully!");
-    processedInvoices.unshift({
-      vendor: item.vendor,
-      status: "approved",
-      invoiceNumber: item.invoiceNumber,
-      amount: `$${item.amount.toLocaleString()}`,
-      uploadedBy: "Current User",
-      uploadedTime: "Just now",
-      extractedTime: "Just now",
-      accuracy: `${item.confidence}%`,
-    });
-    navigate("/history");
-  };
-
-  const handleReject = () => {
-    toast.error("Invoice rejected");
-    setReviewPanel(null);
-  };
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto px-4 py-6">
 
       {/* HEADER */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-3xl font-bold text-foreground">Review Queue</h1>
-        <p className="text-muted-foreground mt-1">{filteredItems.length} invoices pending review</p>
+        <p className="text-muted-foreground mt-1">
+          {invoices.length} invoices require manual verification
+        </p>
       </motion.div>
 
-      {/* FILTER BAR */}
-      <Card className="bg-card/80 border-border">
-        <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center">
-          <div className="flex-1 relative w-full">
+      {/* SEARCH BAR */}
+      <Card className="bg-card border-border">
+        <CardContent className="p-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search by vendor or invoice number..."
-              className="pl-10 bg-background border-border"
+              placeholder="Search by vendor or invoice #..."
+              className="pl-10 bg-background"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <span className="text-sm whitespace-nowrap">Confidence:</span>
-            <Slider value={confidenceRange} onValueChange={setConfidenceRange} min={0} max={100} step={5} className="flex-1 md:flex-none md:w-40" />
-            <span className="text-sm font-medium">{confidenceRange[0]}-{confidenceRange[1]}%</span>
-          </div>
         </CardContent>
       </Card>
 
-      {/* REVIEW LIST */}
-      {filteredItems.map((item, i) => (
-        <motion.div key={item.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="bg-black/40 border-border/60 hover:border-emerald-500/50 transition-all">
-            <CardContent className="p-5">
-
-              {/* TOP ROW */}
-              <div className="flex flex-col md:flex-row justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-lg font-semibold">{item.vendor}</h2>
-                    <Badge className="bg-amber-500/10 text-amber-500">Medium</Badge>
-                    <Badge className="bg-emerald-500/10 text-emerald-500">Needs Review</Badge>
-                  </div>
-
-                  <div className="flex flex-wrap gap-5 text-sm text-muted-foreground">
-                    <span><b className="text-xs mr-1 opacity-70">Invoice#</b>{item.invoiceNumber}</span>
-                    <span><b className="text-xs mr-1 opacity-70">Amount</b>${item.amount.toLocaleString()}</span>
-                    <span><b className="text-xs mr-1 opacity-70">Date</b>{item.date}</span>
-                    <span><b className="text-xs mr-1 opacity-70">Due</b>{item.dueDate}</span>
-                  </div>
-
-                  <div className="flex items-center text-amber-500 text-xs font-semibold gap-2">
-                    <Clock className="w-3 h-3" /> {item.timeLeft}
-                  </div>
-                </div>
-
-                {/* ACTION BUTTONS */}
-                {/* ACTION BUTTONS */}
-<div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-3 sm:gap-3 mt-4 sm:mt-0">
-  {/* CONFIDENCE BUTTON */}
-  <button
-    className={`
-      w-full sm:w-auto px-4 py-2 sm:px-2.5 sm:py-0.5 rounded-full leading-none font-bold
-      text-sm sm:text-[11px] md:text-sm
-      ${getConfidenceTint(item.confidence)}
-    `}
-    onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-  >
-    {item.confidence}% Review
-  </button>
-
-  <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 sm:gap-3">
-    <Button 
-      size="sm" 
-      className="h-10 px-6 text-sm flex-1 sm:flex-none border-emerald-600/50 text-emerald-500 w-full sm:w-auto" 
-      variant="outline" 
-      onClick={() => setReviewPanel(item)}
-    >
-      Review
-    </Button>
-
-    <Button 
-      size="sm" 
-      className="h-10 px-6 text-sm flex-1 sm:flex-none text-emerald-500 w-full sm:w-auto" 
-      variant="ghost" 
-      onClick={() => handleApprove(item)}
-    >
-      <CheckCircle className="w-4 h-4 mr-1" /> Approve
-    </Button>
-
-    <Button 
-      size="sm" 
-      className="h-10 px-6 text-sm flex-1 sm:flex-none text-red-500 w-full sm:w-auto" 
-      variant="ghost" 
-      onClick={handleReject}
-    >
-      <XCircle className="w-4 h-4 mr-1" /> Reject
-    </Button>
-  </div>
-</div>
-
-              </div>
-
-              {/* EXPANDED FIELDS */}
-              <AnimatePresence>
-                {expandedId === item.id && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="pt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                      {item.fields.map((f) => (
-                        <div key={f.name} className="p-3 rounded-lg bg-white/5 border border-white/10">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-muted-foreground">{f.name}</span>
-                            <span className={`${f.confidence >= 85 ? "text-emerald-400" : f.confidence >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                              {f.confidence}%
-                            </span>
-                          </div>
-                          <p className="font-medium">{f.value}</p>
-                          {f.confidence < 70 && (
-                            <p className="text-[11px] text-muted-foreground mt-1">Original: {f.original}</p>
-                          )}
-                        </div>
-                      ))}
+      {/* LIST */}
+      <div className="space-y-4">
+        {filteredInvoices.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <CheckCircle className="w-12 h-12 mx-auto mb-3 text-emerald-500/50" />
+            <p>All caught up! No invoices pending review.</p>
+          </div>
+        ) : (
+          filteredInvoices.map((inv) => (
+            <motion.div key={inv.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-border hover:border-emerald-500/30 transition-all bg-card/50">
+                <CardContent className="p-5 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                  
+                  {/* LEFT: Info */}
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-lg font-bold truncate max-w-[250px]" title={inv.companyName}>
+                        {inv.companyName}
+                      </h3>
+                      <Badge variant="outline" className={`capitalize ${getLevelColor(inv.confidenceLevel)}`}>
+                        {inv.confidenceLevel} Confidence
+                      </Badge>
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                        Needs Review
+                      </Badge>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
-            </CardContent>
-          </Card>
-        </motion.div>
-      ))}
-
-      {/* SIDE PANEL (full overlay, A-type behavior) */}
-      <AnimatePresence>
-        {reviewPanel && (
-          <>
-            <motion.div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setReviewPanel(null)}
-            />
-
-            <motion.div className="fixed right-0 top-0 h-full w-full md:w-[480px] bg-card border-l border-border z-50 overflow-y-auto"
-              initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 24 }}
-            >
-              <div className="p-6 space-y-4">
-
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold">Review Invoice</h2>
-                  <Button variant="ghost" size="icon" onClick={() => setReviewPanel(null)}>
-                    <X className="w-5 h-5" />
-                  </Button>
-                </div>
-
-                {reviewPanel.fields.map((f) => (
-                  <div key={f.name} className="border p-4 rounded-lg bg-black/20">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>{f.name}</span>
-                      <Badge>{f.confidence}%</Badge>
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5" /> {inv.invoiceNumber}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" /> 
+                        {new Date(inv.date).toLocaleDateString()}
+                      </span>
+                      <span className="flex items-center gap-1 text-foreground font-medium">
+                        <DollarSign className="w-3.5 h-3.5" /> 
+                        {inv.currency} {inv.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
-                    <p className="font-medium">{f.value}</p>
-                    <p className="text-xs text-muted-foreground">Original: {f.original}</p>
                   </div>
-                ))}
 
-                <div className="flex gap-3 pt-3">
-                  <Button className="flex-1" onClick={() => handleApprove(reviewPanel!)}>
-                    <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                  </Button>
-                  <Button className="flex-1" variant="destructive" onClick={handleReject}>
-                    <XCircle className="w-4 h-4 mr-1" /> Reject
-                  </Button>
-                </div>
+                  {/* RIGHT: Action */}
+                  <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+                    <div className="text-right mr-2 hidden md:block">
+                       <p className="text-xs text-muted-foreground">AI Score</p>
+                       <p className={`font-bold ${inv.confidenceScore > 80 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                         {inv.confidenceScore}%
+                       </p>
+                    </div>
+                    <Button 
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white w-full md:w-auto"
+                      onClick={() => setReviewItem(inv)}
+                    >
+                      Review Invoice
+                    </Button>
+                  </div>
 
-              </div>
+                </CardContent>
+              </Card>
             </motion.div>
-          </>
+          ))
+        )}
+      </div>
+
+      {/* REVIEW MODAL */}
+      <AnimatePresence>
+        {reviewItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card w-full max-w-3xl rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* HEADER */}
+              <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500"/>
+                  <h2 className="font-bold text-lg">Manual Review Required</h2>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setReviewItem(null)} disabled={!!processingId}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* BODY */}
+              <div className="p-6 overflow-y-auto space-y-6">
+                
+                {/* 1. Key Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                    <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                      <Building2 className="w-3 h-3" /> Vendor
+                    </p>
+                    <p className="font-semibold text-lg truncate" title={reviewItem.companyName}>
+                      {reviewItem.companyName}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                    <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Date
+                    </p>
+                    <p className="font-semibold text-lg">
+                      {new Date(reviewItem.date).toDateString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Line Items */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-muted/50 px-4 py-2 border-b text-xs font-semibold text-muted-foreground uppercase">
+                    Line Items Extracted
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/20 text-muted-foreground sticky top-0">
+                        <tr>
+                          <th className="p-3 font-medium">Description</th>
+                          <th className="p-3 font-medium text-right">Qty</th>
+                          <th className="p-3 font-medium text-right">Price</th>
+                          <th className="p-3 font-medium text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {reviewItem.lineItems.length > 0 ? (
+                          reviewItem.lineItems.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="p-3">{item.description}</td>
+                              <td className="p-3 text-right">{item.quantity}</td>
+                              <td className="p-3 text-right">{item.unit_price.toFixed(2)}</td>
+                              <td className="p-3 text-right font-medium">{item.amount.toFixed(2)}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="p-4 text-center text-muted-foreground italic">
+                              No items extracted
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 3. Financials */}
+                <div className="flex justify-end">
+                  <div className="w-full sm:w-1/2 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>{reviewItem.currency} {reviewItem.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Tax</span>
+                      <span>{reviewItem.currency} {reviewItem.tax.toFixed(2)}</span>
+                    </div>
+                    {reviewItem.discount > 0 && (
+                      <div className="flex justify-between text-sm text-emerald-500">
+                        <span>Discount</span>
+                        <span>- {reviewItem.currency} {reviewItem.discount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xl font-bold border-t pt-3 mt-2">
+                      <span>Total</span>
+                      <span>{reviewItem.currency} {reviewItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+              
+              {/* FOOTER ACTIONS */}
+              <div className="p-4 bg-muted/30 border-t flex gap-3 justify-end">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 sm:flex-none border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => handleDecision(reviewItem.id, 'rejected')}
+                  disabled={!!processingId}
+                >
+                  {processingId === reviewItem.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <XCircle className="w-4 h-4 mr-2" />}
+                  Reject Invoice
+                </Button>
+                
+                <Button 
+                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => handleDecision(reviewItem.id, 'approved')}
+                  disabled={!!processingId}
+                >
+                  {processingId === reviewItem.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <CheckCircle className="w-4 h-4 mr-2" />}
+                  Approve & Process
+                </Button>
+              </div>
+
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

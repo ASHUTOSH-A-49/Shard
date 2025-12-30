@@ -137,12 +137,12 @@ const Auth = () => {
             <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
               <span className="text-primary text-2xl font-bold">S</span>
             </div>
-            <span className="text-2xl font-bold">SmartAudit</span>
+            <span className="text-2xl font-bold">Shard</span>
           </Link>
 
           <h1 className="text-4xl font-bold mb-6">
             AI-Powered Invoice <br />
-            <span className="text-primary">Auditing Platform</span>
+            <span className="text-primary">Invoice Automation</span>
           </h1>
 
           <p className="text-muted-foreground text-lg max-w-md">

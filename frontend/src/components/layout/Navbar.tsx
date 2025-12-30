@@ -91,16 +91,16 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
           
           {/* GitHub Link (Hidden on mobile) */}
           <Button variant="ghost" size="icon" className="hidden sm:flex text-muted-foreground" asChild>
-            <a href="https://github.com/ASHUTOSH-A-49" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/ASHUTOSH-A-49/Shard" target="_blank" rel="noopener noreferrer">
               <Github className="w-4 h-4 sm:w-5 sm:h-5" />
             </a>
           </Button>
 
           {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative text-muted-foreground">
+          {/* <Button variant="ghost" size="icon" className="relative text-muted-foreground">
             <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
             <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-card" />
-          </Button>
+          </Button> */}
 
           {/* Theme Toggle */}
           <Tooltip>

@@ -1,36 +1,71 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, 
   Palette, 
-  Sliders, 
-  Bell, 
-  Key, 
-  Database,
   Save,
   Moon,
   Sun,
-  Monitor
+  Monitor,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useThemeStore } from '@/store/themeStore';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+
+// 👇 Firebase Imports
+import { updateProfile } from 'firebase/auth';
+import { auth } from '../services/firebase'; 
 
 export default function Settings() {
   const { theme, setTheme } = useThemeStore();
-  const [autoApproveThreshold, setAutoApproveThreshold] = useState([95]);
-  const [confidenceWarning, setConfidenceWarning] = useState([70]);
-  const [duplicateDetection, setDuplicateDetection] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
+  const { user } = useAuth();
+  
+  // Local state
+  const [displayName, setDisplayName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
-    toast.success('Settings saved successfully!');
+  // Sync state with current user data
+  useEffect(() => {
+    if (user?.name) {
+      setDisplayName(user.name);
+    } else if (auth.currentUser?.displayName) {
+      setDisplayName(auth.currentUser.displayName);
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!auth.currentUser) return;
+
+    if (!displayName.trim()) {
+      toast.error("Name cannot be empty");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      // Update Firebase Profile
+      await updateProfile(auth.currentUser, {
+        displayName: displayName
+      });
+
+      toast.success('Profile updated successfully!');
+      
+      // Optional: You might need to reload the page to see changes in the sidebar/header immediately
+      // window.location.reload(); 
+
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
+      toast.error(error.message || 'Failed to update profile');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -56,14 +91,6 @@ export default function Settings() {
             <Palette className="w-4 h-4 mr-2" />
             Appearance
           </TabsTrigger>
-          <TabsTrigger value="processing">
-            <Sliders className="w-4 h-4 mr-2" />
-            Processing
-          </TabsTrigger>
-          {/* <TabsTrigger value="notifications">
-            <Bell className="w-4 h-4 mr-2" />
-           Notifications
-          </TabsTrigger> */}
         </TabsList>
 
         {/* Profile Tab */}
@@ -78,28 +105,42 @@ export default function Settings() {
                 <CardDescription>Update your personal details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" defaultValue="not entered" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" defaultValue="not entered" />
-                  </div>
-                </div>
+                
+                {/* Name Field (Editable) */}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" defaultValue="your gmail" />
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input 
+                    id="displayName" 
+                    value={displayName} 
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Enter your full name" 
+                  />
                 </div>
-                {/* <div className="space-y-2">
-                  <Label htmlFor="company">Company</Label>
-                  <Input id="company" defaultValue="HackXios 2K25" />
-                </div> */}
-                <Button onClick={handleSave}>
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </Button>
+
+                {/* Email Field (Read-Only) */}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    value={user?.email || ''} 
+                    disabled 
+                    className="bg-muted text-muted-foreground opacity-70 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-muted-foreground">Email cannot be changed.</p>
+                </div>
+
+                <div className="pt-2">
+                  <Button onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-2" />
+                    )}
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+
               </CardContent>
             </Card>
           </motion.div>
@@ -117,7 +158,7 @@ export default function Settings() {
                 <CardDescription>Choose your preferred color scheme</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
@@ -150,151 +191,6 @@ export default function Settings() {
                     <p className="text-xs text-muted-foreground">Coming soon</p>
                   </motion.button>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
-
-        {/* Processing Tab */}
-        <TabsContent value="processing">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Auto-Approve Threshold</CardTitle>
-                <CardDescription>
-                  Invoices with confidence above this threshold will be auto-approved
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={autoApproveThreshold}
-                    onValueChange={setAutoApproveThreshold}
-                    min={80}
-                    max={100}
-                    step={1}
-                    className="flex-1"
-                  />
-                  <span className="text-lg font-semibold text-primary w-16 text-right">
-                    {autoApproveThreshold}%
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Confidence Warning Threshold</CardTitle>
-                <CardDescription>
-                  Fields below this confidence will be flagged for review
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={confidenceWarning}
-                    onValueChange={setConfidenceWarning}
-                    min={50}
-                    max={90}
-                    step={5}
-                    className="flex-1"
-                  />
-                  <span className="text-lg font-semibold text-warning w-16 text-right">
-                    {confidenceWarning}%
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Duplicate Detection</CardTitle>
-                <CardDescription>
-                  Automatically detect and flag potential duplicate invoices
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Enable Detection</p>
-                    <p className="text-sm text-muted-foreground">
-                      Compare against last 90 days of invoices
-                    </p>
-                  </div>
-                  <Switch
-                    checked={duplicateDetection}
-                    onCheckedChange={setDuplicateDetection}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Button onClick={handleSave}>
-              <Save className="w-4 h-4" />
-              Save Processing Settings
-            </Button>
-          </motion.div>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>Choose how you want to be notified</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Email Notifications</p>
-                    <p className="text-sm text-muted-foreground">
-                      Receive daily digest of invoice processing
-                    </p>
-                  </div>
-                  <Switch
-                    checked={emailNotifications}
-                    onCheckedChange={setEmailNotifications}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Low Confidence Alerts</p>
-                    <p className="text-sm text-muted-foreground">
-                      Get notified when invoices need manual review
-                    </p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Processing Complete</p>
-                    <p className="text-sm text-muted-foreground">
-                      Notification when batch processing finishes
-                    </p>
-                  </div>
-                  <Switch defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Weekly Reports</p>
-                    <p className="text-sm text-muted-foreground">
-                      Receive weekly analytics summary
-                    </p>
-                  </div>
-                  <Switch />
-                </div>
-                <Button onClick={handleSave}>
-                  <Save className="w-4 h-4" />
-                  Save Notification Settings
-                </Button>
               </CardContent>
             </Card>
           </motion.div>

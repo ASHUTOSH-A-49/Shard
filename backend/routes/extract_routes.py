@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from uuid import uuid4
 from flask import Blueprint, request, jsonify
+from bson import ObjectId  # 👈 Required for database updates
 from config import Config
 from services.groq_extractor import GroqExtractor
 from services.canonicalizer import DataCanonicalizer
@@ -30,7 +31,6 @@ def set_invoice_model(model: InvoiceModel):
 
 @extract_bp.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "service": "invoice-extractor",
@@ -43,47 +43,34 @@ def extract_invoice():
     """
     Extract invoice data AND store with User Email (from token)
     """
-
-    # ==========================================================
-    # 1️⃣ GET AND VERIFY USER FROM TOKEN
-    # ==========================================================
+    
+    # 1. Auth Headers
     auth_header = request.headers.get("Authorization", "")
     raw_token = auth_header.replace("Bearer ", "").strip()
-
     try:
-        # Using dummy JSON token for Hackathon/Dev
         data = json.loads(raw_token)
-        
-        # 👇 CHANGE: Prioritize 'email' as the ID, fallback to 'userId'
+        if isinstance(data, str): data = json.loads(data)
         user_id = data.get("email") or data.get("userId")
-        
-        if not user_id:
-            return jsonify({"error": "Token missing email or userId"}), 401
+        if not user_id: return jsonify({"error": "Token missing email"}), 401
     except:
         return jsonify({"error": "Invalid token format"}), 401
 
-    # ==========================================================
-    # 2️⃣ SAFETY CHECK: FILE VALIDATION
-    # ==========================================================
-    if 'file' not in request.files:
-        return jsonify({"error": "No file provided"}), 400
-
+    # 2. File Check
+    if 'file' not in request.files: return jsonify({"error": "No file provided"}), 400
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
+    if file.filename == '': return jsonify({"error": "No file selected"}), 400
 
+    # 3. Size Check
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
     file.seek(0)
-
     if file_length > Config.MAX_FILE_SIZE:
         return jsonify({"error": f"File too large ({file_length} bytes)"}), 413
 
+    # 4. Quality Check (Non-PDFs)
     file_ext = os.path.splitext(file.filename)[1].lower()
     file_bytes = file.read()
     file.seek(0)
-
-    # Only check quality for non-PDF
     if file_ext != '.pdf':
         is_bad, reason, score = check_image_quality(file_bytes, blur_threshold=450.0, contrast_threshold=35.0)
         if is_bad:
@@ -93,9 +80,7 @@ def extract_invoice():
                 "quality_score": round(score, 2)
             }), 400
 
-    # ==========================================================
-    # 3️⃣ EXTRACT USING GROQ API
-    # ==========================================================
+    # 5. Extraction Logic
     try:
         image_base64 = groq_extractor.encode_image(file)
         raw_response = groq_extractor.extract(image_base64)
@@ -106,18 +91,15 @@ def extract_invoice():
         usage_data = raw_response.pop("_usage", {})
         extracted_data = raw_response
 
-        is_valid_struct, error_msg = groq_extractor.validate_response_structure(extracted_data)
-        if not is_valid_struct:
-            return jsonify({"success": False, "error": f"Structure: {error_msg}"}), 500
-
+        # Canonicalize & Validate
         canonical_data = canonicalizer.canonicalize_invoice(extracted_data)
         is_valid_content, val_error = InvoiceValidator.validate_invoice(canonical_data)
         confidence_scores = confidence_scorer.calculate_confidence(canonical_data)
+        
+        # 👇 FIX: Get status directly from confidence_scores (not nested in field_confidence)
         status = confidence_scores.get('status', 'needs_review')
 
-        # ==========================================================
-        # 4️⃣ SAVE INVOICE WITH userId (EMAIL) TO MONGODB
-        # ==========================================================
+        # Save to DB
         invoice_id = str(uuid4())
         if invoice_model:
             invoice_id = invoice_model.save_extraction(
@@ -127,12 +109,9 @@ def extract_invoice():
                 status=status,
                 original_filename=file.filename,
                 metadata={"usage": usage_data},
-                user_id=user_id  # 👈 Saves the email
+                user_id=user_id 
             )
 
-        # ==========================================================
-        # 5️⃣ RETURN FULL RESPONSE
-        # ==========================================================
         return jsonify({
             "success": True,
             "invoice_id": invoice_id,
@@ -152,32 +131,69 @@ def extract_invoice():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# =========================================================
+# 👇 ROUTE: Handle Approve/Reject from Review Queue
+# =========================================================
+@extract_bp.route('/invoices/<invoice_id>/status', methods=['PUT', 'OPTIONS'])
+def update_invoice_status(invoice_id):
+    """
+    Updates the status (approved/rejected) and logs the approver.
+    """
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if not invoice_model:
+        return jsonify({"error": "Database not initialized"}), 500
+
+    try:
+        data = request.json
+        new_status = data.get('status')
+        approver = data.get('approved_by')
+
+        if new_status not in ['approved', 'rejected']:
+            return jsonify({"error": "Invalid status value"}), 400
+
+        # Update Query
+        update_fields = {
+            # 👇 FIX: Update the correct path "confidence_scores.status"
+            "confidence_scores.status": new_status, 
+            "status": new_status, # Keep root status synced
+            "approved_by": approver,
+            "approved_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        # Execute Update directly on DB
+        result = invoice_model.db.invoices.update_one(
+            {"_id": ObjectId(invoice_id)},
+            {"$set": update_fields}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "Invoice not found"}), 404
+
+        return jsonify({
+            "success": True, 
+            "message": f"Invoice marked as {new_status}",
+            "id": invoice_id
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Status update failed: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
 # ========== DASHBOARD & REVIEW ROUTES ==========
 
 @extract_bp.route('/review-queue', methods=['GET'])
 def get_review_queue():
-    if not invoice_model:
-        return jsonify({"error": "Database not initialized"}), 500
+    if not invoice_model: return jsonify({"error": "Database error"}), 500
     invoices = invoice_model.get_review_queue(limit=20)
     return jsonify({"invoices": invoices, "count": len(invoices)}), 200
 
-@extract_bp.route('/review/<invoice_id>/approve', methods=['POST'])
-def approve_invoice(invoice_id):
-    if not invoice_model:
-        return jsonify({"error": "Database not initialized"}), 500
-    success = invoice_model.update_status(
-        invoice_id,
-        "approved",
-        "Auto-approved by system"
-    )
-    if success:
-        return jsonify({"status": "approved", "invoice_id": invoice_id}), 200
-    return jsonify({"error": "Failed to approve"}), 500
-
 @extract_bp.route('/analytics', methods=['GET'])
 def get_analytics():
-    if not invoice_model:
-        return jsonify({"error": "Database not initialized"}), 500
+    if not invoice_model: return jsonify({"error": "Database error"}), 500
     analytics = invoice_model.get_analytics()
     return jsonify(analytics), 200
 
@@ -186,38 +202,30 @@ def get_analytics():
 @extract_bp.route('/invoices', methods=['GET'])
 def get_invoices():
     """
-    Get all invoices for the Activity Feed.
-    Filters by the logged-in user email (or userId).
+    Get all invoices for Activity Feed.
     """
-    if not invoice_model:
-        return jsonify({"error": "Database not initialized"}), 500
+    if not invoice_model: return jsonify({"error": "Database error"}), 500
 
-    # 1. Auth Check (Get User Email)
     auth_header = request.headers.get("Authorization", "")
     raw_token = auth_header.replace("Bearer ", "").strip()
 
     try:
         data = json.loads(raw_token)
-        # 👇 CHANGE: Match the extract logic (use email)
+        if isinstance(data, str): data = json.loads(data)
         user_id = data.get("email") or data.get("userId")
     except:
         return jsonify({"error": "Invalid token"}), 401
 
-    # 2. Query Parameters
     limit = int(request.args.get('limit', 50))
     
     try:
-        # 3. Direct DB Query (filters by "userId" field in DB, which now holds the email)
         query = {"userId": user_id}
-        
         cursor = invoice_model.db.invoices.find(query).sort("created_at", -1).limit(limit)
         invoices = list(cursor)
 
-        # 4. Serialize ObjectId
         for inv in invoices:
             inv["_id"] = str(inv["_id"])
 
-        # 5. Return in format expected by frontend
         return jsonify({
             "success": True,
             "count": len(invoices),
@@ -226,7 +234,4 @@ def get_invoices():
 
     except Exception as e:
         logger.error(f"Error fetching invoices: {str(e)}")
-        return jsonify({
-            "success": False, 
-            "error": str(e)
-        }), 500
+        return jsonify({"success": False, "error": str(e)}), 500

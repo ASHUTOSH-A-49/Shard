@@ -7,7 +7,6 @@ from routes.extract_routes import extract_bp, set_invoice_model
 from models.invoices import InvoiceModel
 from routes.auth_routes import auth_bp
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -20,8 +19,14 @@ def create_app(config_name: str = 'development') -> Flask:
     app = Flask(__name__)
     app.config.from_object(config[config_name])
 
-    # Enable CORS
-    CORS(app)
+    # ------------------------------------------------------------
+    # 👇 FIXED CORS SECTION
+    # This explicitly allows PUT requests and Authorization headers
+    # ------------------------------------------------------------
+    CORS(app, resources={r"/*": {"origins": "*"}}, 
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization"])
+    # ------------------------------------------------------------
 
     # Initialize MongoDB
     try:
@@ -37,6 +42,7 @@ def create_app(config_name: str = 'development') -> Flask:
     # Register blueprints
     app.register_blueprint(extract_bp)
     app.register_blueprint(auth_bp)
+
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):
@@ -62,7 +68,7 @@ def create_app(config_name: str = 'development') -> Flask:
                 "health": "GET /api/health",
                 "extract": "POST /api/extract",
                 "review_queue": "GET /api/review-queue",
-                "approve": "POST /api/review/<invoice_id>/approve",
+                "approve": "PUT /api/invoices/<invoice_id>/status",
                 "analytics": "GET /api/analytics"
             }
         }), 200

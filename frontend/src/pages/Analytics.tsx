@@ -97,7 +97,7 @@ export default function Analytics() {
     return days;
   }, [invoices]);
 
-  // 3. CHART: Status Breakdown (Matches Activity Feed Logic)
+  // 3. CHART: Status Breakdown (FIXED LOGIC)
   const statusData = useMemo(() => {
     const counts = {
       auto_approved: 0,
@@ -107,23 +107,29 @@ export default function Analytics() {
     };
 
     invoices.forEach(inv => {
-      // Logic must match ActivityLog.tsx exactly
+      // 1. Extract Status & Confidence safely
       const scores = inv.confidence_scores || {};
       const fieldConf = scores.field_confidence || {};
       
-      const dbStatus = fieldConf.status?.toLowerCase();
+      // Look in all possible DB locations for status
+      const rawStatus = (inv.status || fieldConf.status || scores.status || '').toLowerCase();
       const conf = scores.overall_confidence || 0;
 
-      if (dbStatus === 'rejected') {
+      // 2. Prioritize Explicit DB Status Tags
+      if (rawStatus === 'approved') {
+        counts.approved++; // Manually approved
+      } else if (rawStatus === 'auto_approved') {
+        counts.auto_approved++; // System auto-approved
+      } else if (rawStatus === 'rejected') {
         counts.rejected++;
-      } else if (dbStatus === 'needs_review' || dbStatus === 'review_needed') {
+      } else if (rawStatus === 'needs_review' || rawStatus === 'review_needed') {
         counts.needs_review++;
-      } else if (conf < 85) {
-        counts.needs_review++; // Low confidence fallback
-      } else if (conf >= 85) {
-        counts.auto_approved++;
+      } 
+      // 3. Fallback Logic (if status is missing/empty)
+      else if (conf < 85) {
+        counts.needs_review++;
       } else {
-        counts.approved++;
+        counts.auto_approved++; // High confidence default
       }
     });
 
@@ -135,23 +141,20 @@ export default function Analytics() {
     ].filter(i => i.value > 0);
   }, [invoices]);
 
-  // 4. CHART: Accuracy by Field (FIXED LOGIC)
+  // 4. CHART: Accuracy by Field
   const fieldAccuracyData = useMemo(() => {
-    // Accumulators
     const fields = {
       'Invoice #': { sum: 0, count: 0 },
       'Vendor': { sum: 0, count: 0 },
       'Date': { sum: 0, count: 0 },
-      'Items': { sum: 0, count: 0 }, // Renamed from "Line Items" to match DB intent
-      'Total': { sum: 0, count: 0 }  // Using "pricing" as proxy
+      'Items': { sum: 0, count: 0 },
+      'Total': { sum: 0, count: 0 }
     };
 
     invoices.forEach(inv => {
-      // 1. Get the field_confidence object
       const scores = inv.confidence_scores || {};
-      const fieldConf = scores.field_confidence || {}; // <--- CRITICAL FIX
+      const fieldConf = scores.field_confidence || {}; 
 
-      // 2. Helper to safely add score if it exists
       const addScore = (key: keyof typeof fields, val: any) => {
         const numVal = parseFloat(val);
         if (!isNaN(numVal) && numVal > 0) {
@@ -160,12 +163,11 @@ export default function Analytics() {
         }
       };
 
-      // 3. Map Database Keys to Chart Keys
       addScore('Invoice #', fieldConf.invoice_number);
-      addScore('Vendor', fieldConf.vendor_name || fieldConf.company_name); // Try both
+      addScore('Vendor', fieldConf.vendor_name || fieldConf.company_name);
       addScore('Date', fieldConf.date);
       addScore('Items', fieldConf.items);
-      addScore('Total', fieldConf.pricing); // "pricing" covers totals/tax usually
+      addScore('Total', fieldConf.pricing);
     });
 
     return Object.entries(fields).map(([name, data]) => ({
