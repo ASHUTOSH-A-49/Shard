@@ -7,28 +7,27 @@ const api = axios.create({
 // frontend/src/lib/api.ts
 api.interceptors.request.use((config) => {
   const userStr = localStorage.getItem('user');
-  const nameOnly = localStorage.getItem('name'); // Checking for 'name' specifically
+  const nameStr = localStorage.getItem('name'); // Your specific key
 
-  try {
-    let tokenData: any = {};
+  let identifier = "";
 
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      tokenData = { 
-        email: user.email, 
-        userId: user.name || user.id // Prioritize 'name' if that's your DB key
-      };
-    } else if (nameOnly) {
-      tokenData = { email: nameOnly };
+  if (userStr) {
+    try {
+      const userObj = JSON.parse(userStr);
+      identifier = userObj.email || userObj.name;
+    } catch (e) {
+      identifier = userStr; // fallback if it's not JSON
     }
-
-    if (Object.keys(tokenData).length > 0) {
-      // Backend expects a stringified JSON object
-      config.headers.Authorization = `Bearer ${JSON.stringify(tokenData)}`;
-    }
-  } catch (e) {
-    console.error("Auth Interceptor Error:", e);
+  } else if (nameStr) {
+    identifier = nameStr;
   }
+
+  if (identifier) {
+    // Backend uses json.loads(), so we send a stringified JSON object
+    const token = JSON.stringify({ email: identifier });
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  
   return config;
 });
 

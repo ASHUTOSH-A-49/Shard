@@ -1,6 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
-// --- Types ---
 export interface LineItem {
   description: string;
   quantity: number;
@@ -20,32 +20,21 @@ export interface Invoice {
   extractedData?: {
     invoiceNumber?: string;
     vendorName?: string;
-    vendorAddress?: string;
-    billingAddress?: string;
-    taxAmount?: number;
-    subtotal?: number;
     totalAmount?: number;
-    dueDate?: string;
     lineItems?: LineItem[];
     [key: string]: any; 
   };
   createdAt: string;
   updatedAt: string;
   approvedBy?: string;
-  approvedAt?: string;
 }
 
 interface InvoiceState {
-  // --- State Variables ---
   invoices: Invoice[];
   selectedInvoice: Invoice | null;
   isLoading: boolean;
-  filters: {
-    status: string;
-    search: string;
-  };
+  filters: { status: string; search: string; };
 
-  // --- Actions ---
   addInvoice: (invoice: Invoice) => void;
   updateInvoice: (id: string, data: Partial<Invoice>) => void;
   setInvoices: (invoices: Invoice[]) => void; 
@@ -56,56 +45,43 @@ interface InvoiceState {
   resetStore: () => void;
 }
 
-export const useInvoiceStore = create<InvoiceState>((set) => ({
-  // --- Initial State ---
-  invoices: [],
-  selectedInvoice: null,
-  isLoading: false,
-  filters: {
-    status: 'all',
-    search: '',
-  },
+export const useInvoiceStore = create<InvoiceState>()(
+  persist(
+    (set) => ({
+      invoices: [],
+      selectedInvoice: null,
+      isLoading: false,
+      filters: { status: 'all', search: '' },
 
-  // --- Actions Implementation ---
-  
-  // Use this only for the "immediate" upload feedback
-  addInvoice: (invoice) => set((state) => ({
-    invoices: [invoice, ...state.invoices]
-  })),
+      addInvoice: (invoice) => set((state) => ({
+        invoices: [invoice, ...state.invoices]
+      })),
 
-  updateInvoice: (id, data) => set((state) => ({
-    invoices: state.invoices.map((inv) =>
-      inv.id === id 
-        ? { ...inv, ...data, updatedAt: new Date().toISOString() } 
-        : inv
-    ),
-    selectedInvoice: state.selectedInvoice?.id === id 
-        ? { ...state.selectedInvoice, ...data, updatedAt: new Date().toISOString() } 
-        : state.selectedInvoice
-  })),
+      updateInvoice: (id, data) => set((state) => ({
+        invoices: state.invoices.map((inv) =>
+          inv.id === id ? { ...inv, ...data, updatedAt: new Date().toISOString() } : inv
+        ),
+      })),
 
-  // Source of Truth sync from MongoDB
-  setInvoices: (invoices) => set({ 
-    invoices, 
-    isLoading: false 
-  }),
+      // This overwrites local cache with fresh MongoDB data when the app loads
+      setInvoices: (invoices) => set({ invoices, isLoading: false }),
 
-  removeInvoice: (id) => set((state) => ({
-    invoices: state.invoices.filter((inv) => inv.id !== id),
-    selectedInvoice: state.selectedInvoice?.id === id ? null : state.selectedInvoice
-  })),
+      removeInvoice: (id) => set((state) => ({
+        invoices: state.invoices.filter((inv) => inv.id !== id)
+      })),
 
-  setSelectedInvoice: (invoice) => set({ selectedInvoice: invoice }),
-
-  setFilters: (newFilters) => set((state) => ({
-    filters: { ...state.filters, ...newFilters }
-  })),
-
-  setLoading: (loading) => set({ isLoading: loading }),
-
-  resetStore: () => set({ 
-    invoices: [], 
-    selectedInvoice: null, 
-    filters: { status: 'all', search: '' } 
-  }),
-}));
+      setSelectedInvoice: (invoice) => set({ selectedInvoice: invoice }),
+      setFilters: (newFilters) => set((state) => ({
+        filters: { ...state.filters, ...newFilters }
+      })),
+      setLoading: (loading) => set({ isLoading: loading }),
+      resetStore: () => set({ invoices: [], selectedInvoice: null }),
+    }),
+    {
+      name: 'shard-invoice-storage', 
+      storage: createJSONStorage(() => localStorage),
+      // We only persist the invoices, not the loading state or filters
+      partialize: (state) => ({ invoices: state.invoices }),
+    }
+  )
+);
