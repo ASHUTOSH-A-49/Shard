@@ -1,4 +1,6 @@
+import { useAuth } from "@/hooks/useAuth";
 import { motion } from 'framer-motion';
+import { useState,useEffect } from "react";
 import {
   FileText,
   TrendingUp,
@@ -53,11 +55,25 @@ const confidenceData = [
   { name: 'Manual Fix', value: 10, fill: 'hsl(var(--destructive))' },
 ];
 
+
+
+
+
 // ======================================================
 //  DASHBOARD PAGE
 // ======================================================
 export default function Dashboard() {
   const { analytics } = useInvoiceStore();
+  const [getLoginName, setgetLoginName] = useState("");
+
+console.log("Login Name in Dashboard:", localStorage.getItem("username"));
+
+useEffect(() => {
+  const storedName = localStorage.getItem("username");
+  if (storedName) {
+    setgetLoginName(storedName);
+  }
+}, []);
 
   const kpiCards = [
     { title: 'Total Processed', value: analytics.totalProcessed.toLocaleString(), change:'+12%', trend:'up', icon: FileText, color:'--primary' },
@@ -79,7 +95,7 @@ export default function Dashboard() {
       {/* HEADER */}
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}>
         <h1 className="text-2xl sm:text-3xl font-bold break-words">
-          Welcome back, Vaibhavi! 👋
+          Welcome back, {getLoginName}! 👋
         </h1>
         <Badge variant="success" className="mt-1 flex items-center gap-1 w-fit">
           <Flame className="w-4 h-4" /> 6 day streak — keep going!

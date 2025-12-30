@@ -205,3 +205,46 @@ def get_analytics():
         return jsonify({"error": "Database not initialized"}), 500
     analytics = invoice_model.get_analytics()
     return jsonify(analytics), 200
+
+@extract_bp.route('/invoices', methods=['GET'])
+def get_invoice_history():
+    """
+    Fetch invoice history for logged-in user
+    """
+    if not invoice_model:
+        return jsonify({"error": "Database not initialized"}), 500
+
+    # ===== TEMP AUTH (same as extract) =====
+    auth_header = request.headers.get("Authorization", "")
+    raw_token = auth_header.replace("Bearer ", "").strip()
+
+    try:
+        data = json.loads(raw_token)
+        user_id = data.get("userId")
+    except:
+        return jsonify({"error": "Invalid test token format"}), 401
+
+    status = request.args.get("status")
+    limit = int(request.args.get("limit", 20))
+    skip = int(request.args.get("skip", 0))
+
+    query = {"userId": user_id}
+    if status:
+        query["status"] = status
+
+    invoices = list(
+        invoice_model.db.invoices
+        .find(query)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+
+    for inv in invoices:
+        inv["_id"] = str(inv["_id"])
+
+    return jsonify({
+        "success": True,
+        "count": len(invoices),
+        "data": invoices
+    }), 200
