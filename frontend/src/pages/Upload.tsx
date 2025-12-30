@@ -1,10 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
-<<<<<<< HEAD
-=======
 import axios from 'axios';
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -38,24 +35,6 @@ const UploadPage: React.FC = () => {
 
   // SINGLE UPLOAD
   const onDropSingle = useCallback(async (files: File[]) => {
-<<<<<<< HEAD
-    if (!files.length) return;
-    const file = files[0];
-    setIsProcessing(true);
-
-    try {
-      const { invoiceId } = await mockApi.uploadDocument(file);
-      const data = await mockApi.extractInvoiceData(invoiceId, file.name);
-
-      setExtractedData({ ...data, invoiceId, fileName: file.name });
-      setIsProcessing(false);
-      toast.success('Extraction complete!');
-    } catch {
-      toast.error('Failed to process document');
-      setIsProcessing(false);
-    }
-  }, []);
-=======
   if (!files.length) return;
   const file = files[0];
   setIsProcessing(true);
@@ -122,7 +101,6 @@ const UploadPage: React.FC = () => {
   }
 }, []);
 
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 
   const { getRootProps: getSingleRootProps, getInputProps: getSingleInputProps, isDragActive: isSingleActive } = useDropzone({
     onDrop: onDropSingle,
@@ -267,21 +245,6 @@ const UploadPage: React.FC = () => {
               </Card>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-<<<<<<< HEAD
-                {extractedData.fields.map((field: any) => (
-                  <div
-                    key={field.key}
-                    className="bg-card border border-border rounded-xl p-5 hover:border-emerald-500/40 transition"
-                  >
-                    <div className="text-xs uppercase text-muted-foreground font-bold flex justify-between">
-                      {field.key}
-                      <span className="text-emerald-500">● {field.confidence}%</span>
-                    </div>
-                    <div className="font-medium">{field.value}</div>
-                  </div>
-                ))}
-              </div>
-=======
   {extractedData.fields.map((field: any) => (
     <div
       key={field.key}
@@ -304,7 +267,6 @@ const UploadPage: React.FC = () => {
   ))}
 </div>
 
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4">
                 <Button onClick={() => navigate('/history')} className="flex-1 bg-emerald-500 text-white font-black h-12 rounded-xl">

@@ -81,38 +81,21 @@ export default function Settings() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
-<<<<<<< HEAD
-                    <Input id="firstName" defaultValue="Vaibhavi" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" defaultValue="Sharma" />
-=======
                     <Input id="firstName" defaultValue="not entered" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName">Last Name</Label>
                     <Input id="lastName" defaultValue="not entered" />
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-<<<<<<< HEAD
-                  <Input id="email" type="email" defaultValue="vaibhavi@hackxios.dev" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company">Company</Label>
-                  <Input id="company" defaultValue="HackXios 2K25" />
-                </div>
-=======
                   <Input id="email" type="email" defaultValue="your gmail" />
                 </div>
                 {/* <div className="space-y-2">
                   <Label htmlFor="company">Company</Label>
                   <Input id="company" defaultValue="HackXios 2K25" />
                 </div> */}
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
                 <Button onClick={handleSave}>
                   <Save className="w-4 h-4" />
                   Save Changes

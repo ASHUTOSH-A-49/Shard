@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-import { motion } from 'framer-motion';
-=======
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from 'framer-motion';
 import { useState,useEffect } from "react";
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 import {
   FileText,
   TrendingUp,
@@ -59,20 +55,15 @@ const confidenceData = [
   { name: 'Manual Fix', value: 10, fill: 'hsl(var(--destructive))' },
 ];
 
-<<<<<<< HEAD
-=======
 
 
 
 
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 // ======================================================
 //  DASHBOARD PAGE
 // ======================================================
 export default function Dashboard() {
   const { analytics } = useInvoiceStore();
-<<<<<<< HEAD
-=======
   const [getLoginName, setgetLoginName] = useState("");
 
 console.log("Login Name in Dashboard:", localStorage.getItem("username"));
@@ -83,7 +74,6 @@ useEffect(() => {
     setgetLoginName(storedName);
   }
 }, []);
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
 
   const kpiCards = [
     { title: 'Total Processed', value: analytics.totalProcessed.toLocaleString(), change:'+12%', trend:'up', icon: FileText, color:'--primary' },
@@ -105,11 +95,7 @@ useEffect(() => {
       {/* HEADER */}
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}>
         <h1 className="text-2xl sm:text-3xl font-bold break-words">
-<<<<<<< HEAD
-          Welcome back, Vaibhavi! 👋
-=======
           Welcome back, {getLoginName}! 👋
->>>>>>> 3d71827076a3f84c7ee5ab935d066c5637f069c8
         </h1>
         <Badge variant="success" className="mt-1 flex items-center gap-1 w-fit">
           <Flame className="w-4 h-4" /> 6 day streak — keep going!

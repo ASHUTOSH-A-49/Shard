@@ -2,26 +2,27 @@ import requests
 import json
 
 # API endpoint configuration
-# Ensure your Flask server is running on this port
 URL = "http://127.0.0.1:5000/api/extract"
-
-# Path to a real invoice image on your machine for testing
-# Example: "sample_invoice.jpg" or "data/invoice_test.png"
 FILE_PATH = "./assets/sample_invoices/rahul_inv_1.jpeg"
 
 def run_test():
     try:
-        # Open the file in binary read mode ('rb')
+        # Create the dummy token structure your backend expects
+        dummy_token = json.dumps({"userId": "test-user-123"})
+        
+        # Add the Authorization header
+        headers = {
+            "Authorization": f"Bearer {dummy_token}"
+        }
+
         with open(FILE_PATH, 'rb') as f:
-            # Map the file to the key 'file' (matching your Flask request.files['file'])
             files = {'file': f}
             
-            print(f"🚀 Sending {FILE_PATH} to extraction API...")
+            print(f"🚀 Sending {FILE_PATH} with Auth Token...")
             
-            # Send the POST request
-            response = requests.post(URL, files=files)
+            # Pass the headers argument here
+            response = requests.post(URL, files=files, headers=headers)
             
-            # Check for success
             if response.status_code == 200:
                 print("✅ Success! Response received:")
                 print(json.dumps(response.json(), indent=2))
