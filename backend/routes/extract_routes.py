@@ -41,7 +41,7 @@ def health():
 @extract_bp.route('/extract', methods=['POST'])
 def extract_invoice():
     """
-    Extract invoice data AND store with User Email (from token)
+    Extract invoice data and store it in MongoDB under the specific user's identifier.
     """
     # 1. Auth Headers Handling
     auth_header = request.headers.get("Authorization", "")
@@ -51,18 +51,20 @@ def extract_invoice():
         # Handle cases where the token might be double-encoded as a string
         if isinstance(data, str): data = json.loads(data)
         
-        # Use email as the primary unique identifier for MongoDB queries
-        user_id =data.get("userId")
+        # We prioritize 'email' to match the retrieval query in get_invoices
+        user_id = data.get("email") or data.get("userId")
         
         if not user_id: 
-            return jsonify({"error": "Token missing email identifier"}), 401
+            return jsonify({"error": "Token missing identifier"}), 401
     except Exception:
         return jsonify({"error": "Invalid token format"}), 401
 
     # 2. File Check
-    if 'file' not in request.files: return jsonify({"error": "No file provided"}), 400
+    if 'file' not in request.files: 
+        return jsonify({"error": "No file provided"}), 400
     file = request.files['file']
-    if file.filename == '': return jsonify({"error": "No file selected"}), 400
+    if file.filename == '': 
+        return jsonify({"error": "No file selected"}), 400
 
     # 3. Size Check
     file.seek(0, os.SEEK_END)
@@ -103,10 +105,10 @@ def extract_invoice():
         # Get status (approved, rejected, or needs_review)
         status = confidence_scores.get('status', 'needs_review')
 
-        # Save to DB
-        invoice_id = None
+        # 6. Save to DB
+        invoice_id = str(uuid4())
         if invoice_model:
-            # IMPORTANT: pass user_id explicitly to match retrieval query key 'userId'
+            # We save the 'user_id' into the 'userId' field in MongoDB
             invoice_id = invoice_model.save_extraction(
                 extracted_data=extracted_data,
                 canonical_data=canonical_data,
@@ -205,7 +207,7 @@ def get_invoices():
     try:
         data = json.loads(raw_token)
         if isinstance(data, str): data = json.loads(data)
-        # Identify user by email from the token
+        # Search by email (this matches the saved userId from the extract route)
         user_id = data.get("email")
     except Exception:
         return jsonify({"error": "Invalid token"}), 401
@@ -213,7 +215,7 @@ def get_invoices():
     limit = int(request.args.get('limit', 50))
     
     try:
-        # Search MongoDB using 'userId' field
+        # Search MongoDB using 'userId' field exactly
         query = {"userId": user_id}
         cursor = invoice_model.db.invoices.find(query).sort("created_at", -1).limit(limit)
         invoices = list(cursor)
