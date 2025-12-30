@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import api from "../lib/api.ts";
+import api from "../lib/api.ts"; // Use central API instance
 import {
   Search,
   CheckCircle,
   XCircle,
   AlertTriangle,
   X,
-  Clock,
   Calendar,
   DollarSign,
   Building2,
   FileText,
   Loader2
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 
-// --- Types matching your DB structure ---
+// --- Types ---
 interface LineItem {
   description: string;
   quantity: number;
@@ -39,12 +37,9 @@ interface ReviewInvoice {
   date: string;
   confidenceLevel: 'low' | 'medium' | 'high';
   confidenceScore: number;
-  status: string;
   subtotal: number;
   tax: number;
-  discount: number;
   lineItems: LineItem[];
-  rawDate: string; // for sorting/display
 }
 
 export default function ReviewQueue() {
@@ -55,71 +50,49 @@ export default function ReviewQueue() {
   const [reviewItem, setReviewItem] = useState<ReviewInvoice | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // 👇 FETCH DATA
+  // 👇 FETCH DATA FROM REVIEW QUEUE ENDPOINT
   useEffect(() => {
     const fetchQueue = async () => {
       if (!user?.email) return;
 
       try {
-        const token = JSON.stringify({ userId: user.id, email: user.email });
-        const res = await api.get("/api/invoices");
+        setLoading(true);
+        // Direct call to review-queue endpoint
+        const res = await api.get("/api/review-queue");
 
-        if (res.data.success) {
-          const queueItems = res.data.invoices
-            .map((doc: any) => {
-              // 1. Extract Data
-              const extracted = doc.extracted_data || {};
-              const canonical = doc.canonical_data || {};
-              const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
-              const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
-              const pricing = extracted.pricing_summary || canonical.pricing_summary || {};
-              const confScores = doc.confidence_scores || {};
-              const fieldConf = confScores.field_confidence || {};
+        if (res.data.invoices) {
+          const mappedItems = res.data.invoices.map((doc: any) => {
+            const extracted = doc.extracted_data || {};
+            const canonical = doc.canonical_data || {};
+            const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
+            const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
+            const pricing = extracted.pricing_summary || canonical.pricing_summary || {};
+            const confScores = doc.confidence_scores || {};
+            
+            const parseNum = (val: any) => 
+              typeof val === 'string' ? parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0 : val || 0;
 
-              // 2. Status Check: STRICTLY "needs_review"
-              const status = confScores.status?.toLowerCase();
-              if (status !== 'needs_review' && status !== 'review_needed') return null;
-
-              // 3. Map Fields
-              const companyName = metadata.company_name || vendorInfo.vendor_name || "Unknown Vendor";
-              const invNum = metadata.invoice_number || "N/A";
-              
-              const parseNum = (val: any) => typeof val === 'string' ? parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0 : val || 0;
-              
-              const totalAmount = parseNum(pricing.total_amount || metadata.total_amount);
-              const subtotal = parseNum(pricing.subtotal || metadata.subtotal);
-              const tax = parseNum(pricing.tax?.tax_amount); // Fallback logic handled in UI if needed
-              const discount = parseNum(pricing.total_discount || 0);
-
-              // 4. Line Items
-              const rawItems = extracted.items || canonical.items || [];
-              const lineItems = Array.isArray(rawItems) ? rawItems.map((item: any) => ({
+            return {
+              id: doc._id,
+              companyName: metadata.company_name || vendorInfo.vendor_name || "Unknown Vendor",
+              invoiceNumber: metadata.invoice_number || "N/A",
+              amount: parseNum(pricing.total_amount || metadata.total_amount),
+              currency: pricing.currency || "USD",
+              date: metadata.date || doc.created_at,
+              confidenceLevel: confScores.field_confidence?.confidence_level || 'medium',
+              confidenceScore: confScores.overall_confidence || 0,
+              subtotal: parseNum(pricing.subtotal || metadata.subtotal),
+              tax: parseNum(pricing.tax?.tax_amount || pricing.tax || 0),
+              lineItems: (extracted.items || canonical.items || []).map((item: any) => ({
                 description: item.item_name || item.description || "Item",
                 quantity: parseNum(item.quantity || 1),
                 unit_price: parseNum(item.unit_price || item.price || 0),
-                amount: parseNum(item.line_total || item.amount || item.total || 0)
-              })) : [];
+                amount: parseNum(item.line_total || item.amount || 0)
+              }))
+            };
+          });
 
-              return {
-                id: doc._id,
-                companyName,
-                invoiceNumber: invNum,
-                amount: totalAmount,
-                currency: pricing.currency || "USD",
-                date: metadata.date || doc.created_at,
-                rawDate: doc.created_at || new Date().toISOString(),
-                confidenceLevel: fieldConf.confidence_level || 'medium',
-                confidenceScore: confScores.overall_confidence || 0,
-                status: status,
-                subtotal,
-                tax,
-                discount,
-                lineItems
-              };
-            })
-            .filter((item: any) => item !== null); // Remove nulls (non-review items)
-
-          setInvoices(queueItems);
+          setInvoices(mappedItems);
         }
       } catch (error) {
         console.error("Queue fetch error:", error);
@@ -138,18 +111,15 @@ export default function ReviewQueue() {
     setProcessingId(id);
 
     try {
-      const token = JSON.stringify({ userId: user.id, email: user.email });
-      
-      // Call Backend API to update status
+      // Points to: /api/invoices/<id>/status
       await api.put(`/api/invoices/${id}/status`, {
-    status: decision,
-    approved_by: user?.email
-});
-      // UI Updates
-      toast.success(`Invoice ${decision === 'approved' ? 'Approved' : 'Rejected'} successfully`);
-      setInvoices(prev => prev.filter(inv => inv.id !== id)); // Remove from list
-      setReviewItem(null); // Close modal
+        status: decision,
+        approved_by: user?.email
+      });
 
+      toast.success(`Invoice ${decision === 'approved' ? 'Approved' : 'Rejected'} successfully`);
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
+      setReviewItem(null);
     } catch (error) {
       console.error("Update failed:", error);
       toast.error("Failed to update invoice status");
@@ -158,7 +128,6 @@ export default function ReviewQueue() {
     }
   };
 
-  // Filter Logic
   const filteredInvoices = invoices.filter(inv => 
     inv.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     inv.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase())
@@ -183,8 +152,6 @@ export default function ReviewQueue() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto px-4 py-6">
-
-      {/* HEADER */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-3xl font-bold text-foreground">Review Queue</h1>
         <p className="text-muted-foreground mt-1">
@@ -192,7 +159,6 @@ export default function ReviewQueue() {
         </p>
       </motion.div>
 
-      {/* SEARCH BAR */}
       <Card className="bg-card border-border">
         <CardContent className="p-4">
           <div className="relative">
@@ -207,7 +173,6 @@ export default function ReviewQueue() {
         </CardContent>
       </Card>
 
-      {/* LIST */}
       <div className="space-y-4">
         {filteredInvoices.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -219,8 +184,6 @@ export default function ReviewQueue() {
             <motion.div key={inv.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <Card className="border-border hover:border-emerald-500/30 transition-all bg-card/50">
                 <CardContent className="p-5 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                  
-                  {/* LEFT: Info */}
                   <div className="space-y-2 flex-1">
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-bold truncate max-w-[250px]" title={inv.companyName}>
@@ -249,7 +212,6 @@ export default function ReviewQueue() {
                     </div>
                   </div>
 
-                  {/* RIGHT: Action */}
                   <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
                     <div className="text-right mr-2 hidden md:block">
                        <p className="text-xs text-muted-foreground">AI Score</p>
@@ -264,7 +226,6 @@ export default function ReviewQueue() {
                       Review Invoice
                     </Button>
                   </div>
-
                 </CardContent>
               </Card>
             </motion.div>
@@ -272,7 +233,6 @@ export default function ReviewQueue() {
         )}
       </div>
 
-      {/* REVIEW MODAL */}
       <AnimatePresence>
         {reviewItem && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -282,7 +242,6 @@ export default function ReviewQueue() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card w-full max-w-3xl rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]"
             >
-              {/* HEADER */}
               <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-500"/>
@@ -293,10 +252,7 @@ export default function ReviewQueue() {
                 </Button>
               </div>
 
-              {/* BODY */}
               <div className="p-6 overflow-y-auto space-y-6">
-                
-                {/* 1. Key Fields */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 rounded-lg bg-secondary/50 border border-border">
                     <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -316,7 +272,6 @@ export default function ReviewQueue() {
                   </div>
                 </div>
 
-                {/* 2. Line Items */}
                 <div className="border rounded-lg overflow-hidden">
                   <div className="bg-muted/50 px-4 py-2 border-b text-xs font-semibold text-muted-foreground uppercase">
                     Line Items Extracted
@@ -353,7 +308,6 @@ export default function ReviewQueue() {
                   </div>
                 </div>
 
-                {/* 3. Financials */}
                 <div className="flex justify-end">
                   <div className="w-full sm:w-1/2 space-y-2">
                     <div className="flex justify-between text-sm">
@@ -364,26 +318,18 @@ export default function ReviewQueue() {
                       <span className="text-muted-foreground">Tax</span>
                       <span>{reviewItem.currency} {reviewItem.tax.toFixed(2)}</span>
                     </div>
-                    {reviewItem.discount > 0 && (
-                      <div className="flex justify-between text-sm text-emerald-500">
-                        <span>Discount</span>
-                        <span>- {reviewItem.currency} {reviewItem.discount.toFixed(2)}</span>
-                      </div>
-                    )}
                     <div className="flex justify-between text-xl font-bold border-t pt-3 mt-2">
                       <span>Total</span>
                       <span>{reviewItem.currency} {reviewItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   </div>
                 </div>
-
               </div>
               
-              {/* FOOTER ACTIONS */}
               <div className="p-4 bg-muted/30 border-t flex gap-3 justify-end">
                 <Button 
                   variant="outline" 
-                  className="flex-1 sm:flex-none border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className="flex-1 sm:flex-none border-red-200 text-red-600 hover:bg-red-50"
                   onClick={() => handleDecision(reviewItem.id, 'rejected')}
                   disabled={!!processingId}
                 >
@@ -400,12 +346,10 @@ export default function ReviewQueue() {
                   Approve & Process
                 </Button>
               </div>
-
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
