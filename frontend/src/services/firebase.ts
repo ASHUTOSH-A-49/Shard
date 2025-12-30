@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC1LyxmEQ6Ow5VffXXwT3I3i4y6TPl6l9k",
+  apiKey: "your_api_key",
   authDomain: "invologs.firebaseapp.com",
   projectId: "invologs",
   storageBucket: "invologs.firebasestorage.app",
