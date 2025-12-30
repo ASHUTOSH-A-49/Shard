@@ -131,7 +131,15 @@ Shard uses a standardized JWT Identity Payload stringified into the Authorizatio
 - Direct AWS S3 integration for document archiving.
 - Export to QuickBooks/Xero API.
 - Multi-currency conversion via real-time exchange rate APIs.
-Built with ❤️ by team Hackxios for Hackxios
+
+***Built with ❤️ by team Hackxios for Hackxios***
+contributors and team members
+Rahul Sahu - https://github.com/Rahulsahu7389
+S Vaibhavi - https://github.com/Vaibhaviii14
+Shourya Sinha - https://github.com/ShouryaGit023
+Samir Tiwari  - https://github.com/samirtiwari020
+Akshat Sharma - https://github.com/Sharmaakshat369
+
 
   
 
