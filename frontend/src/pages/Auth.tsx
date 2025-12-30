@@ -103,19 +103,9 @@ const Auth = () => {
       // 🔑 Get ID Token (optional for backend verify)
       const token = await userCredential.user.getIdToken();
 
-      const response = await api.post("/api/auth/verify", {}, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (response.status === 200) {
-    // Handle successful verification
-  }
-} catch (error) {
-  console.error("Authentication verification failed:", error);
-  // Handle error (e.g., redirect to login)
-}
+  const response = await api.post("/api/auth/verify", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
 
       navigate("/dashboard");
     } catch (error: any) {
