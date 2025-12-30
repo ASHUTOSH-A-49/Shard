@@ -3,9 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   Sun, 
   Moon, 
-  Bell, 
   Github, 
-  Settings,
   Menu,
   LogOut,
   User as UserIcon
@@ -13,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useThemeStore } from '@/store/themeStore';
 import { useAuth } from '@/hooks/useAuth';
+import { useInvoiceStore } from '@/store/invoiceStore'; // 👈 Import the store
 import { 
   Tooltip,
   TooltipContent,
@@ -29,6 +28,9 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
   const { logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  
+  // 🧹 Get the reset action from your non-persist store
+  const resetInvoiceStore = useInvoiceStore((state) => state.resetStore);
 
   // 1️⃣ Dynamic Breadcrumb Logic
   const getPageTitle = (pathname: string) => {
@@ -46,21 +48,27 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
 
   const pageTitle = getPageTitle(location.pathname);
 
-  // 2️⃣ FIX: Async Logout & Clear Storage
+  // 2️⃣ Standardized Logout & Store Reset
   const handleLogout = async () => {
     try {
-      // Clear manual storage items we set in other components
+      // A. Reset the Invoice Store immediately (Crucial since persist is removed)
+      resetInvoiceStore();
+
+      // B. Clear manual storage items used by the API interceptor
+      localStorage.removeItem('user');
       localStorage.removeItem('username');
       localStorage.removeItem('token');
       
-      // Perform the actual logout logic
+      // C. Perform Firebase/Auth logout
       await logout();
       
-      // Redirect immediately
+      // D. Redirect to Auth page
       navigate('/auth', { replace: true });
     } catch (error) {
       console.error("Logout failed:", error);
-      // Force redirect even if logout errors
+      // Force cleanup and redirect even if network logout fails
+      resetInvoiceStore();
+      localStorage.clear();
       navigate('/auth');
     }
   };
@@ -78,7 +86,7 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
           )}
           
           <nav className="hidden md:flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground font-semibold">InvoiceAI</span>
+            <span className="text-primary font-bold tracking-tight">Shard</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="text-foreground font-medium animate-in fade-in slide-in-from-left-2">
               {pageTitle}
@@ -89,18 +97,12 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
         {/* RIGHT SIDE: Actions & Profile */}
         <div className="flex items-center gap-1 sm:gap-2">
           
-          {/* GitHub Link (Hidden on mobile) */}
+          {/* GitHub Link */}
           <Button variant="ghost" size="icon" className="hidden sm:flex text-muted-foreground" asChild>
             <a href="https://github.com/ASHUTOSH-A-49/Shard" target="_blank" rel="noopener noreferrer">
               <Github className="w-4 h-4 sm:w-5 sm:h-5" />
             </a>
           </Button>
-
-          {/* Notifications */}
-          {/* <Button variant="ghost" size="icon" className="relative text-muted-foreground">
-            <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-card" />
-          </Button> */}
 
           {/* Theme Toggle */}
           <Tooltip>
@@ -113,7 +115,7 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
               >
                 <motion.div
                   initial={false}
-                  animate={{ rotate: theme === 'dark' ? 180 : 0, scale: theme === 'dark' ? 1 : 1 }}
+                  animate={{ rotate: theme === 'dark' ? 180 : 0 }}
                   transition={{ type: "spring", stiffness: 200, damping: 10 }}
                 >
                   {theme === 'light' ? (
@@ -131,27 +133,36 @@ export function Navbar({ onMenuClick, showMenuButton }: NavbarProps) {
 
           <div className="w-px h-6 bg-border mx-1 hidden sm:block" />
 
-          {/* User Profile / Logout */}
+          {/* User Profile & Logout */}
           <div className="flex items-center gap-2 pl-1">
             <div className="hidden md:flex flex-col items-end mr-2">
               <span className="text-sm font-semibold leading-none">
                 {user?.name || localStorage.getItem('username') || 'User'}
               </span>
-              <span className="text-[10px] text-muted-foreground">Admin</span>
+              <span className="text-[10px] text-emerald-500 font-medium mt-1">
+                Verified Account
+              </span>
             </div>
             
             <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-xs sm:text-sm">
               {user?.name?.charAt(0).toUpperCase() || <UserIcon className="w-4 h-4"/>}
             </div>
 
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleLogout}
-              className="text-muted-foreground hover:text-destructive transition-colors"
-            >
-              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleLogout}
+                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Sign out</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
 
         </div>

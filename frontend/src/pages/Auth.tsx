@@ -14,15 +14,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
-import { db } from "@/services/firebase";
+import { db, auth } from "@/services/firebase";
 import { setDoc, doc, getDoc } from "firebase/firestore";
-
-
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import { auth } from "@/services/firebase";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -59,6 +56,7 @@ const Auth = () => {
       setLoading(true);
 
       let userCredential;
+      let displayName = "";
 
       if (isLogin) {
         // 🔐 LOGIN
@@ -70,16 +68,18 @@ const Auth = () => {
 
         const user = userCredential.user;
 
-        // 📌 FETCH NAME FROM FIRESTORE AND SAVE LOCALLY
+        // 📌 FETCH NAME FROM FIRESTORE
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (userDoc.exists()) {
-          const userData = userDoc.data();
-          localStorage.setItem("username", userData.name);
+          displayName = userDoc.data().name;
         }
-
-        toast.success("Welcome back!");
       } else {
         // 🆕 SIGNUP
+        if (!formData.name) {
+          toast.error("Please enter your full name");
+          return;
+        }
+
         userCredential = await createUserWithEmailAndPassword(
           auth,
           formData.email,
@@ -87,38 +87,54 @@ const Auth = () => {
         );
 
         const user = userCredential.user;
+        displayName = formData.name;
 
-        // 💾 SAVE USER NAME IN FIRESTORE
+        // 💾 SAVE USER IN FIRESTORE
         await setDoc(doc(db, "users", user.uid), {
           name: formData.name,
           email: formData.email,
+          createdAt: new Date().toISOString(),
         });
-
-        // 📌 Store name in LocalStorage
-        localStorage.setItem("username", formData.name);
-
-        toast.success("Account created successfully!");
       }
 
-      // 🔑 Get ID Token (optional for backend verify)
-      const token = await userCredential.user.getIdToken();
+      // 🔑 Get ID Token for backend verification
+      const firebaseUser = userCredential.user;
+      const token = await firebaseUser.getIdToken();
 
-  const response = await api.post("/api/auth/verify", {}, {
-    headers: { Authorization: `Bearer ${token}` }
-  })
+      // ✅ STORE USER DATA FOR API INTERCEPTOR
+      // This ensures 'api.ts' can read the user object to build Bearer tokens
+      const userPayload = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email,
+        name: displayName,
+      };
 
+      localStorage.setItem("user", JSON.stringify(userPayload));
+      localStorage.setItem("username", displayName);
+
+      // 📡 VERIFY WITH BACKEND
+      try {
+        await api.post("/api/auth/verify", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error("Backend verification failed, but continuing to dashboard...");
+      }
+
+      toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
       navigate("/dashboard");
+
     } catch (error: any) {
-      toast.error(error.message);
+      console.error("Auth error:", error);
+      toast.error(error.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
     <div className="min-h-screen bg-background flex">
-      {/* LEFT SIDE */}
+      {/* LEFT SIDE: Visuals */}
       <motion.div
         className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-muted dark:bg-[#090E1A]"
         initial={{ opacity: 0, x: -50 }}
@@ -138,17 +154,17 @@ const Auth = () => {
           </Link>
 
           <h1 className="text-4xl font-bold mb-6">
-            AI-Powered Invoice <br />
+            AI-Powered <br />
             <span className="text-primary">Invoice Automation</span>
           </h1>
 
           <p className="text-muted-foreground text-lg max-w-md">
-            Automate invoice processing with advanced AI. Save time and reduce errors.
+            Automate invoice processing with advanced AI. Save time, reduce errors, and scale your business.
           </p>
         </div>
       </motion.div>
 
-      {/* RIGHT SIDE */}
+      {/* RIGHT SIDE: Form */}
       <motion.div
         className="w-full lg:w-1/2 flex items-center justify-center px-8 py-12"
         initial={{ opacity: 0, x: 50 }}
@@ -167,12 +183,14 @@ const Auth = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
-              <div>
-                <Label>Full Name</Label>
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
                 <div className="relative">
-                  <HiOutlineUser className="absolute left-3 top-1/2 -translate-y-1/2" />
+                  <HiOutlineUser className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
+                    id="name"
                     name="name"
+                    placeholder="John Doe"
                     value={formData.name}
                     onChange={handleInputChange}
                     className="pl-10 h-12"
@@ -181,13 +199,15 @@ const Auth = () => {
               </div>
             )}
 
-            <div>
-              <Label>Email</Label>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
               <div className="relative">
-                <HiOutlineMail className="absolute left-3 top-1/2 -translate-y-1/2" />
+                <HiOutlineMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="email"
                   name="email"
                   type="email"
+                  placeholder="name@company.com"
                   value={formData.email}
                   onChange={handleInputChange}
                   className="pl-10 h-12"
@@ -195,13 +215,15 @@ const Auth = () => {
               </div>
             </div>
 
-            <div>
-              <Label>Password</Label>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
               <div className="relative">
-                <HiOutlineLockClosed className="absolute left-3 top-1/2 -translate-y-1/2" />
+                <HiOutlineLockClosed className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
                   value={formData.password}
                   onChange={handleInputChange}
                   className="pl-10 pr-10 h-12"
@@ -209,19 +231,21 @@ const Auth = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
-                  {showPassword ? <HiOutlineEyeOff /> : <HiOutlineEye />}
+                  {showPassword ? <HiOutlineEyeOff size={20} /> : <HiOutlineEye size={20} />}
                 </button>
               </div>
             </div>
 
             {!isLogin && (
-              <div>
-                <Label>Confirm Password</Label>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input
+                  id="confirmPassword"
                   name="confirmPassword"
                   type="password"
+                  placeholder="••••••••"
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   className="h-12"
@@ -229,20 +253,32 @@ const Auth = () => {
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full h-12">
-              {loading
-                ? "Please wait..."
-                : isLogin
-                  ? "Sign In"
-                  : "Create Account"}
+            <Button type="submit" disabled={loading} className="w-full h-12 text-base">
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <motion.span
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    className="w-4 h-4 border-2 border-background border-t-transparent rounded-full"
+                  />
+                  Please wait...
+                </span>
+              ) : isLogin ? (
+                "Sign In"
+              ) : (
+                "Create Account"
+              )}
             </Button>
           </form>
 
           <p className="mt-8 text-center text-muted-foreground">
             {isLogin ? "Don't have an account? " : "Already have an account? "}
             <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-primary font-medium"
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setFormData({ name: "", email: "", password: "", confirmPassword: "" });
+              }}
+              className="text-primary font-medium hover:underline transition-all"
             >
               {isLogin ? "Sign up" : "Sign in"}
             </button>

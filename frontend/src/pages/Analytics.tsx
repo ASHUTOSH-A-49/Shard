@@ -6,7 +6,9 @@ import {
   TrendingUp,
   Download,
   FileJson,
-  Loader2
+  Loader2,
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,16 +33,25 @@ export default function Analytics() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 👇 FETCH DATA
+  // 👇 FETCH DATA WITH STANDARDIZED TOKEN
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.email) return;
+      const identifier = user?.email || localStorage.getItem('username');
+      if (!identifier) {
+        setLoading(false);
+        return;
+      }
 
       try {
-        const token = JSON.stringify({ userId: user.id, email: user.email });
+        const token = JSON.stringify({ 
+          userId: user?.id || identifier, 
+          email: identifier,
+          username: localStorage.getItem('username') || identifier
+        });
+
         const res = await api.get("/api/invoices?limit=1000", {
-    headers: { Authorization: `Bearer ${token}` }
-});
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
         if (res.data.success) {
           setInvoices(res.data.invoices);
@@ -60,7 +71,6 @@ export default function Analytics() {
   // 1. KPI: Total & Accuracy
   const kpiStats = useMemo(() => {
     const total = invoices.length;
-    // Fallback: Check nested confidence if root is missing
     const totalConf = invoices.reduce((acc, inv) => {
       const scores = inv.confidence_scores || {};
       return acc + (scores.overall_confidence || 0);
@@ -68,7 +78,6 @@ export default function Analytics() {
     
     const avgAccuracy = total > 0 ? (totalConf / total).toFixed(1) : "0.0";
     
-    // Weekly growth
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const thisWeekCount = invoices.filter(i => new Date(i.created_at || i.updated_at) > sevenDaysAgo).length;
@@ -83,7 +92,7 @@ export default function Analytics() {
       d.setDate(d.getDate() - (6 - i));
       return { 
         dateStr: d.toDateString(), 
-        name: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }), 
+        name: d.toLocaleDateString('en-US', { weekday: 'short' }), 
         count: 0 
       };
     });
@@ -97,54 +106,33 @@ export default function Analytics() {
     return days;
   }, [invoices]);
 
-  // 3. CHART: Status Breakdown (FIXED LOGIC)
+  // 3. CHART: Status Breakdown
   const statusData = useMemo(() => {
-    const counts = {
-      auto_approved: 0,
-      approved: 0,
-      needs_review: 0,
-      rejected: 0
-    };
+    const counts = { auto: 0, manual: 0, review: 0, rejected: 0 };
 
     invoices.forEach(inv => {
-      // 1. Extract Status & Confidence safely
-      const scores = inv.confidence_scores || {};
-      const fieldConf = scores.field_confidence || {};
-      
-      // Look in all possible DB locations for status
-      const rawStatus = (inv.status || fieldConf.status || scores.status || '').toLowerCase();
-      const conf = scores.overall_confidence || 0;
+      const status = (inv.status || inv.confidence_scores?.status || '').toLowerCase();
+      const conf = inv.confidence_scores?.overall_confidence || 0;
 
-      // 2. Prioritize Explicit DB Status Tags
-      if (rawStatus === 'approved') {
-        counts.approved++; // Manually approved
-      } else if (rawStatus === 'auto_approved') {
-        counts.auto_approved++; // System auto-approved
-      } else if (rawStatus === 'rejected') {
-        counts.rejected++;
-      } else if (rawStatus === 'needs_review' || rawStatus === 'review_needed') {
-        counts.needs_review++;
-      } 
-      // 3. Fallback Logic (if status is missing/empty)
-      else if (conf < 85) {
-        counts.needs_review++;
-      } else {
-        counts.auto_approved++; // High confidence default
-      }
+      if (status === 'approved') counts.manual++;
+      else if (status === 'auto_approved') counts.auto++;
+      else if (status === 'rejected') counts.rejected++;
+      else if (status.includes('review') || conf < 85) counts.review++;
+      else counts.auto++; // Default
     });
 
     return [
-      { name: 'Auto-Approved', value: counts.auto_approved, fill: '#10b981' }, // Emerald
-      { name: 'Approved', value: counts.approved, fill: '#3b82f6' },      // Blue
-      { name: 'Needs Review', value: counts.needs_review, fill: '#f59e0b' }, // Amber
-      { name: 'Rejected', value: counts.rejected, fill: '#ef4444' }       // Red
+      { name: 'Auto-Approved', value: counts.auto, fill: '#10b981' }, 
+      { name: 'Approved', value: counts.manual, fill: '#3b82f6' },      
+      { name: 'Needs Review', value: counts.review, fill: '#f59e0b' }, 
+      { name: 'Rejected', value: counts.rejected, fill: '#ef4444' }       
     ].filter(i => i.value > 0);
   }, [invoices]);
 
   // 4. CHART: Accuracy by Field
   const fieldAccuracyData = useMemo(() => {
-    const fields = {
-      'Invoice #': { sum: 0, count: 0 },
+    const fields: any = {
+      'Inv #': { sum: 0, count: 0 },
       'Vendor': { sum: 0, count: 0 },
       'Date': { sum: 0, count: 0 },
       'Items': { sum: 0, count: 0 },
@@ -152,50 +140,23 @@ export default function Analytics() {
     };
 
     invoices.forEach(inv => {
-      const scores = inv.confidence_scores || {};
-      const fieldConf = scores.field_confidence || {}; 
-
-      const addScore = (key: keyof typeof fields, val: any) => {
-        const numVal = parseFloat(val);
-        if (!isNaN(numVal) && numVal > 0) {
-          fields[key].sum += numVal;
-          fields[key].count++;
-        }
+      const fConf = inv.confidence_scores?.field_confidence || {}; 
+      const add = (key: string, val: any) => {
+        if (val) { fields[key].sum += val; fields[key].count++; }
       };
 
-      addScore('Invoice #', fieldConf.invoice_number);
-      addScore('Vendor', fieldConf.vendor_name || fieldConf.company_name);
-      addScore('Date', fieldConf.date);
-      addScore('Items', fieldConf.items);
-      addScore('Total', fieldConf.pricing);
+      add('Inv #', fConf.invoice_number);
+      add('Vendor', fConf.vendor_name || fConf.company_name);
+      add('Date', fConf.date);
+      add('Items', fConf.items);
+      add('Total', fConf.pricing || fConf.total_amount);
     });
 
-    return Object.entries(fields).map(([name, data]) => ({
+    return Object.entries(fields).map(([name, data]: any) => ({
       name,
       accuracy: data.count > 0 ? Math.round(data.sum / data.count) : 0
     }));
   }, [invoices]);
-
-  // 5. CHART: Top Vendors
-  const topVendorsData = useMemo(() => {
-    const vendorMap: Record<string, number> = {};
-    
-    invoices.forEach(inv => {
-      const extracted = inv.extracted_data || {};
-      const canonical = inv.canonical_data || {};
-      const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
-      const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
-
-      const name = metadata.company_name || vendorInfo.vendor_name || "Unknown";
-      vendorMap[name] = (vendorMap[name] || 0) + 1;
-    });
-
-    return Object.entries(vendorMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-  }, [invoices]);
-
 
   if (loading) {
     return (
@@ -207,7 +168,6 @@ export default function Analytics() {
 
   return (
     <div className="space-y-8 pb-24 px-4 sm:px-6 md:px-0">
-
       {/* HEADER */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -216,164 +176,117 @@ export default function Analytics() {
       >
         <div>
           <h1 className="text-3xl font-bold text-foreground">Analytics</h1>
-          <p className="text-muted-foreground mt-1">Track your invoice processing performance</p>
+          <p className="text-muted-foreground mt-1">AI performance and processing trends</p>
         </div>
 
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          <Button variant="outline" className="flex-1 sm:flex-none">
-            <Download className="w-4 h-4 mr-2" /> PDF
-          </Button>
-          <Button variant="outline" className="flex-1 sm:flex-none">
-            <FileJson className="w-4 h-4 mr-2" /> Excel
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" className="bg-card">
+            <Download className="w-4 h-4 mr-2" /> Export PDF
           </Button>
         </div>
       </motion.div>
 
       {/* KPI GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        
-        {/* Total Processed */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-muted-foreground">Total Processed</span>
-              </div>
-              <p className="text-3xl font-bold">{kpiStats.total}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                <span className="text-emerald-500 font-medium">+{kpiStats.thisWeekCount}</span> this week
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Avg Accuracy */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <Card className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-muted-foreground">Avg Accuracy</span>
-              </div>
-              <p className="text-3xl font-bold">{kpiStats.avgAccuracy}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Based on confidence scores</p>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-      </div>
-
-      {/* ROW 1 - ANALYTICS */}
-      <div className="grid lg:grid-cols-2 gap-6">
-
-        {/* Volume Over Time */}
-        <Card className="overflow-hidden">
-          <CardHeader><CardTitle>Volume (Last 7 Days)</CardTitle></CardHeader>
-          <CardContent className="w-full overflow-x-auto">
-            <div className="min-w-[400px] sm:min-w-0 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={volumeData}>
-                  <defs>
-                    <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" fontSize={12} axisLine={false} tickLine={false} dy={10} />
-                  <YAxis fontSize={12} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
-                  />
-                  <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#volumeGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-muted-foreground">Total Processed</span>
             </div>
+            <p className="text-3xl font-bold">{kpiStats.total}</p>
+            <p className="text-xs text-emerald-500 mt-1">+{kpiStats.thisWeekCount} this week</p>
           </CardContent>
         </Card>
 
-        {/* Status Breakdown */}
-        <Card className="overflow-hidden">
-          <CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader>
-          <CardContent className="h-64 flex flex-col sm:flex-row items-center gap-4">
-            <div className="flex-1 min-w-[200px] h-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie 
-                    data={statusData} 
-                    cx="50%" 
-                    cy="50%" 
-                    innerRadius={60} 
-                    outerRadius={80} 
-                    paddingAngle={4} 
-                    dataKey="value"
-                  >
-                    {statusData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '8px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+        <Card className="hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              <span className="text-sm font-medium text-muted-foreground">Avg AI Accuracy</span>
             </div>
-            <div className="flex-1 space-y-3">
-              {statusData.map((item) => (
-                <div key={item.name} className="flex justify-between text-sm items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full shadow-sm" style={{ background: item.fill }} />
-                    {item.name}
+            <p className="text-3xl font-bold">{kpiStats.avgAccuracy}%</p>
+            <p className="text-xs text-muted-foreground mt-1">Global confidence score</p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <BarChart3 className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-medium text-muted-foreground">Human Intervention</span>
+            </div>
+            <p className="text-3xl font-bold">
+              {Math.round((statusData.find(d => d.name === 'Needs Review')?.value || 0) / (kpiStats.total || 1) * 100)}%
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Invoices requiring review</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* CHARTS */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="w-4 h-4"/> Processing Volume</CardTitle></CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={volumeData}>
+                <defs>
+                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))" fill="url(#colorCount)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Field Extraction Accuracy</CardTitle></CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={fieldAccuracyData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.1} />
+                <XAxis type="number" hide domain={[0, 100]} />
+                <YAxis dataKey="name" type="category" width={60} fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip cursor={{fill: 'transparent'}} />
+                <Bar dataKey="accuracy" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+           <CardHeader><CardTitle className="text-sm font-semibold">System Throughput Status</CardTitle></CardHeader>
+           <CardContent className="h-72 flex flex-col md:flex-row items-center">
+              <div className="flex-1 h-full w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={statusData} innerRadius={60} outerRadius={85} paddingAngle={5} dataKey="value">
+                      {statusData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-3 px-6 w-full">
+                {statusData.map((item) => (
+                  <div key={item.name} className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{background: item.fill}} />
+                      <span>{item.name}</span>
+                    </div>
+                    <span className="font-bold">{item.value}</span>
                   </div>
-                  <b className="font-mono">{item.value}</b>
-                </div>
-              ))}
-              {statusData.length === 0 && <p className="text-muted-foreground text-sm text-center">No data yet</p>}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ROW 2 */}
-      <div className="grid lg:grid-cols-2 gap-6">
-
-        {/* Accuracy by Field */}
-        <Card>
-          <CardHeader><CardTitle>Avg Accuracy by Field</CardTitle></CardHeader>
-          <CardContent className="overflow-x-auto">
-            <div className="min-w-[400px] sm:min-w-0 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={fieldAccuracyData} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} hide />
-                  <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 12}} />
-                  <Tooltip 
-                     cursor={{fill: 'transparent'}}
-                     formatter={(value: number) => [`${value}%`, 'Accuracy']}
-                  />
-                  <Bar dataKey="accuracy" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={30} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Top Vendors */}
-        <Card>
-          <CardHeader><CardTitle>Top Vendors</CardTitle></CardHeader>
-          <CardContent className="overflow-x-auto">
-            <div className="min-w-[400px] sm:min-w-0 h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topVendorsData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} />
-                  <Tooltip 
-                    cursor={{fill: 'hsl(var(--muted)/0.2)'}}
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px' }}
-                  />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
+                ))}
+              </div>
+           </CardContent>
         </Card>
       </div>
     </div>

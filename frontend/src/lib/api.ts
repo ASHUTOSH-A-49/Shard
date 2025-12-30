@@ -5,19 +5,12 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const userStr = localStorage.getItem('user'); // Fixed: Use 'user' key from Auth.tsx
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      // Format EXACTLY as extract_routes.py json.loads expects
-      const token = JSON.stringify({ 
-        userId: user.id || user.uid, 
-        email: user.email 
-      });
-      config.headers.Authorization = `Bearer ${token}`;
-    } catch (e) {
-      console.error("Token format error", e);
-    }
+  const username = localStorage.getItem('username');
+  
+  if (username) {
+    // We send the username inside the "email" field because 
+    const token = JSON.stringify({ email: username });
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });

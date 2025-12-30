@@ -18,33 +18,31 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-// Removed 'email' from type
 type UploadMode = 'single' | 'batch';
 
 const UploadPage: React.FC = () => {
   const navigate = useNavigate();
   const { addInvoice, updateInvoice } = useInvoiceStore();
-  const { user } = useAuth(); 
+  const { user } = useAuth();
 
   const [uploadMode, setUploadMode] = useState<UploadMode>('single');
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
 
-  // SINGLE UPLOAD
+  // SINGLE UPLOAD HANDLER
   const onDropSingle = useCallback(async (files: File[]) => {
     if (!files.length) return;
     const file = files[0];
     
     setIsProcessing(true);
-
     const tempId = Date.now().toString();
 
-    // ADD TO STORE
+    // 1. Initial Store Entry (Processing State)
     addInvoice({
       id: tempId,
       fileName: file.name,
-      vendor: "Analyzing...",
+      vendor: "AI Analyzing...",
       amount: 0,
       currency: "USD",
       date: new Date().toISOString(),
@@ -58,70 +56,67 @@ const UploadPage: React.FC = () => {
       const formData = new FormData();
       formData.append("file", file);
 
-      const userEmail = user?.email || "guest@example.com";
-      const userId = user?.id || "guest_123";
+      // 2. Auth Sync: Use email if available, otherwise fallback to local username
+      const identifier = user?.email || localStorage.getItem('username') || "guest_user";
       
       const token = JSON.stringify({ 
-        userId: userId,
-        email: userEmail 
+        userId: user?.id || identifier,
+        email: user?.email || identifier,
+        username: localStorage.getItem('username') || identifier
       });
 
+      // 3. API Call
       const res = await api.post('/api/extract', formData, {
-    headers: {
-        'Content-Type': 'multipart/form-data',
-        Authorization: `Bearer ${token}`
-    }
-});
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
       const response = res.data;
-      console.log("🔎 Backend Response:", response);
 
       if (!response.success) {
-        throw new Error(response.error || "Extraction failed");
+        throw new Error(response.error || "AI Extraction failed");
       }
 
-      // Format fields for UI
-      const formattedFields = Object.entries(response.canonical_data).map(
-        ([key, value]: any) => ({
-          key,
-          value,
-          confidence: response.confidence?.[key] ?? 90,
-        })
-      );
+      // 4. Data Transformation for UI Display
+      const canonical = response.canonical_data || {};
+      const confidenceMap = response.confidence?.field_confidence || {};
+      
+      const formattedFields = Object.entries(canonical).map(([key, field]: any) => ({
+        key: key.replace(/_/g, ' '), // Prettify keys for UI
+        value: field.value !== undefined ? field.value : field,
+        confidence: confidenceMap[key] || response.confidence?.overall_confidence || 85,
+      }));
 
-      // UPDATE STORE: Success
+      // 5. Update Store with Success Results
       updateInvoice(tempId, {
-        status: 'approved',
-        vendor: response.canonical_data.vendor_name?.value || "Unknown Vendor",
-        amount: typeof response.canonical_data.total_amount?.value === 'number' 
-          ? response.canonical_data.total_amount.value 
-          : 0,
-        confidence: response.confidence?.overall || 0,
+        status: response.status === 'approved' ? 'approved' : 'pending_review',
+        vendor: canonical.vendor_name?.value || "Extracted Vendor",
+        amount: parseFloat(canonical.total_amount?.value || 0),
+        confidence: Math.round(response.confidence?.overall_confidence || 0),
         extractedData: response.extracted_data
       });
 
       setExtractedData({
-        invoiceId: response.invoice_id, 
+        invoiceId: response.invoice_id,
         fields: formattedFields,
-        overallConfidence: response.confidence?.overall ?? 88,
+        overallConfidence: Math.round(response.confidence?.overall_confidence || 88),
         fileName: file.name,
       });
 
-      toast.success("🚀 Extraction complete!");
+      toast.success("AI extraction successful!");
 
     } catch (error: any) {
-      console.error("❌ Upload/Extraction failed:", error);
-      const errorMsg = error?.response?.data?.error || "Server error";
+      console.error("❌ Upload Error:", error);
+      const errorMsg = error?.response?.data?.error || "Connection error to AI engine";
       toast.error(errorMsg);
-
       updateInvoice(tempId, { status: 'failed' });
-
     } finally {
       setIsProcessing(false);
     }
   }, [addInvoice, updateInvoice, user]);
 
-  // SINGLE DROPZONE CONFIG (Removed TIFF)
   const { getRootProps: getSingleRootProps, getInputProps: getSingleInputProps, isDragActive: isSingleActive } = useDropzone({
     onDrop: onDropSingle,
     accept: {
@@ -133,9 +128,11 @@ const UploadPage: React.FC = () => {
     disabled: uploadMode !== 'single' || isProcessing
   });
 
-  // BATCH DROPZONE CONFIG (Removed TIFF)
   const { getRootProps: getBatchRootProps, getInputProps: getBatchInputProps, isDragActive: isBatchActive } = useDropzone({
-    onDrop: (files) => setBatchFiles((prev) => [...prev, ...files]),
+    onDrop: (files) => {
+        setBatchFiles((prev) => [...prev, ...files]);
+        toast.info(`${files.length} files added to batch queue`);
+    },
     accept: {
       'application/pdf': ['.pdf'],
       'image/jpeg': ['.jpg', '.jpeg'],
@@ -150,14 +147,13 @@ const UploadPage: React.FC = () => {
 
         <div className="space-y-1">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Upload Invoice</h1>
-          <p className="text-muted-foreground text-sm">Drop your invoice & let AI handle extraction</p>
+          <p className="text-muted-foreground text-sm">Let Shard AI automate your data entry</p>
         </div>
 
-        {/* MODES - Removed Email Option */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[
-            { id: 'single', label: 'Single Upload', icon: HiOutlineDocumentText, desc: 'One at a time' },
-            { id: 'batch', label: 'Batch Upload', icon: HiOutlineDocumentDuplicate, desc: 'Upload many' },
+            { id: 'single', label: 'Single Upload', icon: HiOutlineDocumentText, desc: 'Extract one document' },
+            { id: 'batch', label: 'Batch Upload', icon: HiOutlineDocumentDuplicate, desc: 'Process multiple files' },
           ].map((mode) => (
             <button
               key={mode.id}
@@ -165,7 +161,7 @@ const UploadPage: React.FC = () => {
               className={cn(
                 "p-5 rounded-xl border text-left group bg-card transition-all",
                 uploadMode === mode.id
-                  ? "border-emerald-500/50 shadow dark:bg-[#111] bg-emerald-50/50"
+                  ? "border-emerald-500/50 shadow-md dark:bg-emerald-500/5 bg-emerald-50/50"
                   : "border-border hover:border-emerald-500/30"
               )}
             >
@@ -178,43 +174,48 @@ const UploadPage: React.FC = () => {
 
         <AnimatePresence mode="wait">
           {!extractedData ? (
-            <motion.div key={uploadMode} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-
+            <motion.div 
+              key={uploadMode} 
+              initial={{ opacity: 0, y: 10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
               <div
                 {...(uploadMode === "single" ? getSingleRootProps() : getBatchRootProps())}
                 className={cn(
                   "border-2 border-dashed rounded-2xl w-full transition-all cursor-pointer",
                   "flex flex-col items-center justify-center text-center",
-                  "p-10 sm:p-16 md:p-20 min-h-[280px] sm:min-h-[350px] md:min-h-[400px]",
+                  "p-10 sm:p-16 md:p-20 min-h-[300px]",
                   (isSingleActive || isBatchActive)
-                    ? "border-emerald-500 bg-emerald-500/10"
-                    : "border-border bg-card hover:border-emerald-500/40"
+                    ? "border-emerald-500 bg-emerald-500/5"
+                    : "border-border bg-card hover:border-emerald-500/20"
                 )}
               >
                 <input {...(uploadMode === "single" ? getSingleInputProps() : getBatchInputProps())} />
 
                 {isProcessing ? (
                   <div className="flex flex-col items-center space-y-4">
-                    <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1.3 }}>
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
                       <HiOutlineSparkles className="w-14 h-14 text-emerald-500" />
                     </motion.div>
-                    <h2 className="text-lg font-bold leading-tight">AI is extracting data…</h2>
-                    <p className="text-muted-foreground text-sm">Processing fields & verifying accuracy</p>
+                    <div className="space-y-1">
+                      <h2 className="text-lg font-bold">Extracting Data...</h2>
+                      <p className="text-muted-foreground text-sm">Our AI is reading your invoice fields</p>
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <div className="p-4 rounded-xl border mb-4">
-                      <HiOutlineCloudArrowUp className="w-12 h-12 text-emerald-500" />
+                    <div className="p-4 rounded-full bg-emerald-500/10 mb-4">
+                      <HiOutlineCloudArrowUp className="w-10 h-10 text-emerald-500" />
                     </div>
-                    <h2 className="text-lg sm:text-xl font-bold leading-tight">
-                      {uploadMode === "batch" ? "Drop multiple files" : "Drag & drop invoice here"}
+                    <h2 className="text-lg sm:text-xl font-bold">
+                      {uploadMode === "batch" ? "Select Multiple Files" : "Drag & drop invoice"}
                     </h2>
-                    <p className="text-muted-foreground text-sm mt-1">or click to browse</p>
+                    <p className="text-muted-foreground text-sm mt-1">Supports PDF, JPG, and PNG</p>
 
-                    {/* Removed TIFF tag */}
-                    <div className="flex flex-wrap justify-center gap-2 mt-6">
+                    <div className="flex gap-2 mt-6">
                       {['PDF', 'JPG', 'PNG'].map(ext => (
-                        <span key={ext} className="bg-emerald-500 px-3 py-1 rounded text-xs font-bold border uppercase text-white">
+                        <span key={ext} className="px-3 py-1 rounded-md text-[10px] font-bold border bg-secondary text-secondary-foreground">
                           {ext}
                         </span>
                       ))}
@@ -224,63 +225,58 @@ const UploadPage: React.FC = () => {
               </div>
             </motion.div>
           ) : (
-
-            /* RESULTS */
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-
-              <Card className="bg-card border-border rounded-2xl shadow-lg">
-                <CardContent className="p-6 space-y-6">
-
+            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
+              <Card className="bg-card border-border rounded-2xl overflow-hidden">
+                <CardContent className="p-6">
                   <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                      <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20 text-emerald-500">
-                        <HiOutlineDocumentText size={28} />
+                      <div className="bg-emerald-500/10 p-3 rounded-xl text-emerald-500">
+                        <HiOutlineDocumentText size={24} />
                       </div>
                       <div>
-                        <div className="font-bold">{extractedData.fileName}</div>
-                        <div className="text-xs text-muted-foreground">Processed successfully</div>
+                        <div className="font-bold text-lg">{extractedData.fileName}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                          <HiOutlineCheckCircle className="text-emerald-500" /> AI confidence score calculated
+                        </div>
                       </div>
                     </div>
-
-                    <div className="bg-emerald-500/10 px-4 py-2 rounded-full border text-emerald-500 font-bold">
-                      ● {extractedData.overallConfidence}% (High)
+                    <div className="bg-emerald-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                      {extractedData.overallConfidence}% Accuracy
                     </div>
                   </div>
-
                 </CardContent>
               </Card>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {extractedData.fields.map((field: any) => (
+                {extractedData.fields.map((field: any, idx: number) => (
                   <div
-                    key={field.key}
-                    className="bg-card border border-border rounded-xl p-5 hover:border-emerald-500/40 transition"
+                    key={idx}
+                    className="bg-card border border-border rounded-xl p-4 hover:shadow-sm transition-shadow"
                   >
-                    <div className="text-xs uppercase text-muted-foreground font-bold flex justify-between">
+                    <div className="text-[10px] uppercase text-muted-foreground font-bold flex justify-between mb-2">
                       {field.key}
-                      <span className="text-emerald-500">● {field.confidence}%</span>
+                      <span className={cn(field.confidence > 80 ? "text-emerald-500" : "text-amber-500")}>
+                        {field.confidence}%
+                      </span>
                     </div>
 
-                    <div className="font-medium whitespace-pre-wrap">
+                    <div className="font-semibold text-sm break-words whitespace-pre-wrap">
                       {typeof field.value === "object" && field.value !== null
-                        ? Object.entries(field.value)
-                            .map(([k, v]) => `${k}: ${v ?? "N/A"}`)
-                            .join("\n")
-                        : field.value}
+                        ? JSON.stringify(field.value, null, 2)
+                        : field.value || "Not found"}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button onClick={() => navigate('/activity')} className="flex-1 bg-emerald-500 text-white font-black h-12 rounded-xl">
-                  <HiOutlineCheckCircle className="mr-2" /> Approve & View Feed
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-border mt-4">
+                <Button onClick={() => navigate('/activity')} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white h-12 rounded-xl">
+                  <HiOutlineCheckCircle className="mr-2 w-5 h-5" /> Confirm & View in Activity
                 </Button>
-                <Button variant="outline" onClick={() => setExtractedData(null)} className="h-12 rounded-xl font-bold">
-                  <HiOutlineArrowPath className="mr-2" /> Upload Another
+                <Button variant="outline" onClick={() => setExtractedData(null)} className="h-12 rounded-xl border-border">
+                  <HiOutlineArrowPath className="mr-2 w-5 h-5" /> Upload Another
                 </Button>
               </div>
-
             </motion.div>
           )}
         </AnimatePresence>

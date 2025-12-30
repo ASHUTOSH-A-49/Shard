@@ -4,7 +4,6 @@ import api from "../lib/api.ts";
 import { 
   Loader2, 
   Calendar, 
-  FileText, 
   AlertCircle, 
   CheckCircle2, 
   Eye, 
@@ -50,21 +49,26 @@ export default function ActivityLog() {
   // 👇 FETCH REAL DATA FROM DB
   useEffect(() => {
     const fetchInvoices = async () => {
-      if (!user?.email) {
+      // Logic: Ensure we have an identifier (email or username) before fetching
+      const identifier = user?.email || localStorage.getItem('username');
+      if (!identifier) {
         setLoading(false);
         return; 
       }
 
       try {
+        // Construct the token as a stringified JSON object for backend json.loads()
         const token = JSON.stringify({ 
-            userId: user.id, 
-            email: user.email 
+            userId: user?.id || identifier, 
+            email: identifier,
+            username: localStorage.getItem('username') || identifier
         });
 
         const res = await api.get("/api/invoices", {
-    headers: { Authorization: `Bearer ${token}` }
-});
-console.log("DB Data Received:", res.data.invoices);
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        console.log("DB Data Received:", res.data.invoices);
 
         if (res.data.success) {
           const currentLocalInvoices = useInvoiceStore.getState().invoices;
@@ -72,14 +76,13 @@ console.log("DB Data Received:", res.data.invoices);
 
           const dbInvoices: InvoiceDetails[] = res.data.invoices.map((doc: any) => {
             
-            // 1. EXTRACT DATA 
+            // 1. EXTRACT DATA - Handles both nested and canonical structures
             const extracted = doc.extracted_data || {};
             const canonical = doc.canonical_data || {};
             const metadata = extracted.invoice_metadata || canonical.invoice_metadata || {};
             const vendorInfo = extracted.vendor_info || canonical.vendor_info || {};
             const pricing = extracted.pricing_summary || canonical.pricing_summary || {};
-            
-            const confScores = doc.confidence_scores || extracted.confidence_scores || canonical.confidence_scores || {};
+            const confScores = doc.confidence_scores || {};
 
             // A. Company Name Logic
             const displayVendor = 
@@ -87,8 +90,8 @@ console.log("DB Data Received:", res.data.invoices);
               vendorInfo.vendor_name || 
               "Unknown Vendor";
 
-            // B. STATUS LOGIC
-            const dbStatusRaw = doc.status || confScores.status || confScores.field_confidence?.status || '';
+            // B. STATUS LOGIC - Checks root level and confidence nested level
+            const dbStatusRaw = (doc.status || confScores.status || '').toLowerCase();
             const confidence = confScores.overall_confidence || 0;
 
             let finalStatus: Invoice['status'] = 'approved';
@@ -99,7 +102,7 @@ console.log("DB Data Received:", res.data.invoices);
                 finalStatus = 'approved';
             } else if (dbStatusRaw === 'needs_review' || dbStatusRaw === 'review_needed') {
                 finalStatus = 'pending_review';
-            } else if (confidence < 85) {
+            } else if (confidence < 85 && confidence > 0) {
                 finalStatus = 'pending_review';
             } else {
                 finalStatus = 'auto_approved';
@@ -113,10 +116,8 @@ console.log("DB Data Received:", res.data.invoices);
             };
 
             // D. Amounts & Currency
-            const rawTotal = pricing.total_amount || metadata.total_amount || 0;
-            const rawSubtotal = pricing.subtotal || metadata.subtotal || 0;
-            const amountValue = parseNum(rawTotal);
-            const subtotalValue = parseNum(rawSubtotal);
+            const amountValue = parseNum(pricing.total_amount || metadata.total_amount);
+            const subtotalValue = parseNum(pricing.subtotal || metadata.subtotal);
             const currency = pricing.currency || metadata.currency || "USD";
 
             // E. Line Items
@@ -125,12 +126,12 @@ console.log("DB Data Received:", res.data.invoices);
                 description: item.item_name || item.description || "Item",
                 quantity: parseNum(item.quantity || 1),
                 unit_price: parseNum(item.unit_price || item.price || 0),
-                amount: parseNum(item.line_total || item.amount || item.total || 0)
+                amount: parseNum(item.line_total || item.amount || 0)
             })) : [];
 
             // F. Tax Logic
-            let taxValue = parseNum(pricing.tax);
-            if (!taxValue && amountValue > subtotalValue) {
+            let taxValue = parseNum(pricing.tax?.tax_amount || pricing.tax);
+            if (!taxValue && amountValue > subtotalValue && subtotalValue > 0) {
                taxValue = amountValue - subtotalValue;
             }
 
@@ -140,26 +141,26 @@ console.log("DB Data Received:", res.data.invoices);
 
             return {
               id: doc._id,
-              fileName: doc.fileName || "scanned_doc.pdf",
+              fileName: doc.original_filename || "document.pdf",
               vendor: displayVendor,
               amount: amountValue,
               currency: currency,
               date: invoiceDate,
               status: finalStatus,
               rawStatus: dbStatusRaw,
-              confidence: confidence,
+              confidence: Math.round(confidence),
               extractedData: extracted,
               createdAt: processedDate,
-              updatedAt: doc.updated_at || new Date().toISOString(),
+              updatedAt: doc.updated_at || processedDate,
               subtotal: subtotalValue,
               tax: taxValue,
-              discount: 0, 
               lineItems: lineItems,
               approvedBy: doc.approved_by, 
               approvedAt: doc.approved_at
             };
           });
 
+          // Sort by newest first
           dbInvoices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setInvoices([...processingItems, ...dbInvoices]);
         }
@@ -181,7 +182,6 @@ console.log("DB Data Received:", res.data.invoices);
     );
   }
 
-  // --- Helper to Render Status Badge ---
   const renderStatusBadge = (status: string) => {
     switch (status) {
         case 'auto_approved':
@@ -216,13 +216,13 @@ console.log("DB Data Received:", res.data.invoices);
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight">Activity Feed</h1>
         <p className="text-muted-foreground">
-          Real-time processing queue and history
+          Real-time processing queue and history from database
         </p>
       </div>
 
       <div className="space-y-4">
         {invoices.length === 0 && !loading && (
-          <div className="text-center py-10 text-muted-foreground">No activity yet.</div>
+          <div className="text-center py-10 text-muted-foreground">No records found for your account.</div>
         )}
 
         {invoices.map((inv) => (
@@ -237,8 +237,6 @@ console.log("DB Data Received:", res.data.invoices);
             )}>
               <CardContent className="p-0">
                 <div className="p-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
-                  
-                  {/* LEFT SIDE: Icon & Main Info */}
                   <div className="flex items-start gap-4 flex-1">
                     <div className={cn(
                       "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
@@ -262,23 +260,21 @@ console.log("DB Data Received:", res.data.invoices);
                       </div>
                       
                       <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground items-center">
-                        {/* Filename removed here */}
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> 
                           {inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : "N/A"}
                         </span>
                         
-                        {/* APPROVED / REJECTED INFO */}
                         {inv.approvedBy && (
                           <>
                             {inv.status === 'approved' && (
-                              <span className="flex items-center gap-1 text-blue-600/80 bg-blue-50 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-100 whitespace-normal">
+                              <span className="flex items-center gap-1 text-blue-600/80 bg-blue-50 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-100">
                                 <UserCheck className="w-3 h-3 flex-shrink-0" /> 
                                 Approved by {inv.approvedBy}
                               </span>
                             )}
                             {inv.status === 'rejected' && (
-                              <span className="flex items-center gap-1 text-red-600/80 bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium border border-red-100 whitespace-normal">
+                              <span className="flex items-center gap-1 text-red-600/80 bg-red-50 px-2 py-0.5 rounded text-[11px] font-medium border border-red-100">
                                 <UserX className="w-3 h-3 flex-shrink-0" /> 
                                 Rejected by {inv.approvedBy}
                               </span>
@@ -289,7 +285,6 @@ console.log("DB Data Received:", res.data.invoices);
                     </div>
                   </div>
 
-                  {/* RIGHT SIDE: Amount & Actions */}
                   {inv.status !== 'processing' && (
                     <div className="flex items-center gap-6 justify-between sm:justify-end w-full sm:w-auto mt-2 sm:mt-0">
                       <div className="text-right">
@@ -300,7 +295,7 @@ console.log("DB Data Received:", res.data.invoices);
                           "flex items-center justify-end gap-1 text-xs font-medium",
                           inv.confidence > 80 ? "text-emerald-600" : "text-amber-600"
                         )}>
-                          <CheckCircle2 className="w-3 h-3" /> {inv.confidence}% Conf.
+                          {inv.confidence}% Accuracy
                         </div>
                       </div>
 
@@ -317,7 +312,7 @@ console.log("DB Data Received:", res.data.invoices);
 
                   {inv.status === 'processing' && (
                     <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium animate-pulse ml-auto">
-                      Analyzing document...
+                      Analyzing...
                     </div>
                   )}
                 </div>
@@ -327,9 +322,6 @@ console.log("DB Data Received:", res.data.invoices);
         ))}
       </div>
 
-      {/* ======================= */}
-      {/* 👁️ INVOICE DETAILS MODAL */}
-      {/* ======================= */}
       <AnimatePresence>
         {selectedInvoice && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -339,25 +331,21 @@ console.log("DB Data Received:", res.data.invoices);
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-card w-full max-w-2xl rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]"
             >
-              {/* HEADER */}
               <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
                 <div className="flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-primary"/>
-                  <h2 className="font-bold text-lg">Invoice Details</h2>
+                  <h2 className="font-bold text-lg">Extraction Details</h2>
                 </div>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setSelectedInvoice(null)}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
 
-              {/* BODY */}
               <div className="p-6 overflow-y-auto space-y-6">
-                
-                {/* 1. Summary Cards */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 rounded-lg bg-secondary/50 space-y-1">
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><Building2 className="w-3 h-3"/> Company</p>
-                    <p className="font-semibold text-base truncate" title={selectedInvoice.vendor}>{selectedInvoice.vendor}</p>
+                    <p className="font-semibold text-base truncate">{selectedInvoice.vendor}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-secondary/50 space-y-1">
                     <p className="text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className="w-3 h-3"/> Date</p>
@@ -367,7 +355,6 @@ console.log("DB Data Received:", res.data.invoices);
                   </div>
                 </div>
 
-                {/* 2. Line Items Table */}
                 <div>
                   <h3 className="text-sm font-medium mb-3 text-muted-foreground uppercase tracking-wider">Line Items</h3>
                   <div className="border rounded-lg overflow-hidden">
@@ -387,7 +374,7 @@ console.log("DB Data Received:", res.data.invoices);
                               <td className="p-3 max-w-[200px] truncate">{item.description}</td>
                               <td className="p-3 text-right">{item.quantity}</td>
                               <td className="p-3 text-right">
-                                {item.unit_price > 0 && selectedInvoice.currency} {item.unit_price > 0 ? item.unit_price.toFixed(2) : '-'}
+                                {selectedInvoice.currency} {item.unit_price.toFixed(2)}
                               </td>
                               <td className="p-3 text-right font-medium">
                                 {selectedInvoice.currency} {item.amount.toFixed(2)}
@@ -396,9 +383,7 @@ console.log("DB Data Received:", res.data.invoices);
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={4} className="p-4 text-center text-muted-foreground italic">
-                              No line items extracted.
-                            </td>
+                            <td colSpan={4} className="p-4 text-center text-muted-foreground italic">No line items extracted.</td>
                           </tr>
                         )}
                       </tbody>
@@ -406,7 +391,6 @@ console.log("DB Data Received:", res.data.invoices);
                   </div>
                 </div>
 
-                {/* 3. Totals Breakdown */}
                 <div className="flex justify-end">
                   <div className="w-full sm:w-1/2 space-y-2 border-t pt-4">
                     <div className="flex justify-between text-sm">
@@ -422,7 +406,6 @@ console.log("DB Data Received:", res.data.invoices);
                       <span>{selectedInvoice.currency} {selectedInvoice.amount?.toFixed(2)}</span>
                     </div>
                     
-                    {/* Approval Info in Modal */}
                     {selectedInvoice.approvedBy && (
                       <div className={cn(
                         "p-2 rounded text-xs mt-2 flex items-center gap-2 border",
@@ -432,19 +415,10 @@ console.log("DB Data Received:", res.data.invoices);
                         {selectedInvoice.status === 'rejected' ? "Rejected" : "Approved"} by <b>{selectedInvoice.approvedBy}</b>
                       </div>
                     )}
-
-                    <div className="flex justify-between text-xs mt-2">
-                      <span className="text-muted-foreground">AI Confidence</span>
-                      <Badge variant={selectedInvoice.confidence > 80 ? 'success' : 'warning'}>
-                        {selectedInvoice.confidence}%
-                      </Badge>
-                    </div>
                   </div>
                 </div>
-
               </div>
               
-              {/* FOOTER */}
               <div className="p-4 bg-muted/30 border-t flex justify-end">
                 <Button onClick={() => setSelectedInvoice(null)}>Close Details</Button>
               </div>
