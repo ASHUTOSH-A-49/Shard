@@ -1,31 +1,25 @@
 import axios from 'axios';
 
 const api = axios.create({
-  // Ensure VITE_API_URL is set to https://shard-backend.onrender.com in Render
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+  baseURL: import.meta.env.VITE_API_URL || 'https://shard-backend.onrender.com',
 });
 
-// Interceptor to automatically attach correctly formatted tokens
 api.interceptors.request.use((config) => {
-  const userStr = localStorage.getItem('user');
-  
+  const userStr = localStorage.getItem('user'); // Fixed: Use 'user' key from Auth.tsx
   if (userStr) {
     try {
       const user = JSON.parse(userStr);
-      // Backend expects a JSON string containing the user's email/ID
+      // Format EXACTLY as extract_routes.py json.loads expects
       const token = JSON.stringify({ 
         userId: user.id || user.uid, 
         email: user.email 
       });
-      
       config.headers.Authorization = `Bearer ${token}`;
     } catch (e) {
-      console.error("Error parsing user from localStorage", e);
+      console.error("Token format error", e);
     }
   }
   return config;
-}, (error) => {
-  return Promise.reject(error);
 });
 
 export default api;

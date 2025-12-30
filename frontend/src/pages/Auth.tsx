@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { db } from "@/services/firebase";
 import { setDoc, doc, getDoc } from "firebase/firestore";
 
+
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -56,6 +57,7 @@ const Auth = () => {
 
     try {
       setLoading(true);
+
       let userCredential;
 
       if (isLogin) {
@@ -68,18 +70,13 @@ const Auth = () => {
 
         const user = userCredential.user;
 
-        // FETCH NAME FROM FIRESTORE
+        // 📌 FETCH NAME FROM FIRESTORE AND SAVE LOCALLY
         const userDoc = await getDoc(doc(db, "users", user.uid));
-        const displayName = userDoc.exists() ? userDoc.data().name : "User";
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          localStorage.setItem("username", userData.name);
+        }
 
-        // ✅ SAVE FOR INTERCEPTOR (Essential for 401 fix)
-        localStorage.setItem("user", JSON.stringify({
-          id: user.uid,
-          email: user.email,
-          name: displayName
-        }));
-        
-        localStorage.setItem("username", displayName);
         toast.success("Welcome back!");
       } else {
         // 🆕 SIGNUP
@@ -91,38 +88,33 @@ const Auth = () => {
 
         const user = userCredential.user;
 
-        // SAVE USER NAME IN FIRESTORE
+        // 💾 SAVE USER NAME IN FIRESTORE
         await setDoc(doc(db, "users", user.uid), {
           name: formData.name,
           email: formData.email,
         });
 
-        // ✅ SAVE FOR INTERCEPTOR
-        localStorage.setItem("user", JSON.stringify({
-          id: user.uid,
-          email: user.email,
-          name: formData.name
-        }));
-
+        // 📌 Store name in LocalStorage
         localStorage.setItem("username", formData.name);
+
         toast.success("Account created successfully!");
       }
 
-      // 🔑 Verify with Backend
+      // 🔑 Get ID Token (optional for backend verify)
       const token = await userCredential.user.getIdToken();
-      
-      // The interceptor in api.ts will now find the 'user' in localStorage 
-      // and attach the formatted Bearer token automatically.
-      await api.post("/api/auth/verify", {});
+
+  const response = await api.post("/api/auth/verify", {}, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
 
       navigate("/dashboard");
     } catch (error: any) {
-      console.error("Auth Error:", error);
       toast.error(error.message);
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -184,7 +176,6 @@ const Auth = () => {
                     value={formData.name}
                     onChange={handleInputChange}
                     className="pl-10 h-12"
-                    required
                   />
                 </div>
               </div>
@@ -200,7 +191,6 @@ const Auth = () => {
                   value={formData.email}
                   onChange={handleInputChange}
                   className="pl-10 h-12"
-                  required
                 />
               </div>
             </div>
@@ -215,7 +205,6 @@ const Auth = () => {
                   value={formData.password}
                   onChange={handleInputChange}
                   className="pl-10 pr-10 h-12"
-                  required
                 />
                 <button
                   type="button"
@@ -236,7 +225,6 @@ const Auth = () => {
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   className="h-12"
-                  required
                 />
               </div>
             )}

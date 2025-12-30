@@ -80,15 +80,13 @@ def create_app(config_name: str = 'development') -> Flask:
 
     logger.info(f"App created with config: {config_name}")
     return app
-
 env_name = os.getenv('FLASK_ENV', 'production')
 app = create_app(env_name)
 
 if __name__ == '__main__':
-    env = os.getenv('FLASK_ENV', 'development')
-    app = create_app(env)
+    # When running locally
     app.run(
         host='0.0.0.0',
         port=int(os.getenv('API_PORT', 5000)),
-        debug=app.config['DEBUG']
+        debug=True
     )

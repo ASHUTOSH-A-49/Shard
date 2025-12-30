@@ -15,7 +15,7 @@ from utils.image_quality import check_image_quality
 
 logger = logging.getLogger(__name__)
 
-# Blueprint initialization
+# This prefix means all routes here start with /api
 extract_bp = Blueprint('extract', __name__, url_prefix='/api')
 
 # Initialize services
@@ -41,27 +41,28 @@ def health():
 @extract_bp.route('/extract', methods=['POST'])
 def extract_invoice():
     """
-    Extract invoice data and store it in MongoDB under the specific user's email.
+    Extract invoice data AND store with User Email (from token)
     """
-    # 1. Auth Header Processing
+    # 1. Auth Headers Handling
     auth_header = request.headers.get("Authorization", "")
     raw_token = auth_header.replace("Bearer ", "").strip()
     try:
         data = json.loads(raw_token)
+        # Handle cases where the token might be double-encoded as a string
         if isinstance(data, str): data = json.loads(data)
-        # Use email as the primary userId for MongoDB lookups
-        user_id = data.get("email")
+        
+        # Use email as the primary unique identifier for MongoDB queries
+        user_id = data.get("email") or data.get("userId")
+        
         if not user_id: 
             return jsonify({"error": "Token missing email identifier"}), 401
     except Exception:
         return jsonify({"error": "Invalid token format"}), 401
 
-    # 2. File Verification
-    if 'file' not in request.files: 
-        return jsonify({"error": "No file provided"}), 400
+    # 2. File Check
+    if 'file' not in request.files: return jsonify({"error": "No file provided"}), 400
     file = request.files['file']
-    if file.filename == '': 
-        return jsonify({"error": "No file selected"}), 400
+    if file.filename == '': return jsonify({"error": "No file selected"}), 400
 
     # 3. Size Check
     file.seek(0, os.SEEK_END)
@@ -70,7 +71,7 @@ def extract_invoice():
     if file_length > Config.MAX_FILE_SIZE:
         return jsonify({"error": f"File too large ({file_length} bytes)"}), 413
 
-    # 4. Image Quality Check
+    # 4. Quality Check (Non-PDFs)
     file_ext = os.path.splitext(file.filename)[1].lower()
     file_bytes = file.read()
     file.seek(0)
@@ -83,7 +84,7 @@ def extract_invoice():
                 "quality_score": round(score, 2)
             }), 400
 
-    # 5. Extraction and Database Storage
+    # 5. Extraction Logic
     try:
         image_base64 = groq_extractor.encode_image(file)
         raw_response = groq_extractor.extract(image_base64)
@@ -91,28 +92,28 @@ def extract_invoice():
         if "error" in raw_response:
             return jsonify({"success": False, "error": raw_response['error']}), 500
 
-        usage_data = raw_response.pop("_usage", {})
+        usage_stats = raw_response.pop("_usage", {})
         extracted_data = raw_response
 
-        # Process Data
+        # Canonicalize & Validate content
         canonical_data = canonicalizer.canonicalize_invoice(extracted_data)
         is_valid_content, val_error = InvoiceValidator.validate_invoice(canonical_data)
         confidence_scores = confidence_scorer.calculate_confidence(canonical_data)
         
-        # Determine Status
+        # Get status (approved, rejected, or needs_review)
         status = confidence_scores.get('status', 'needs_review')
 
-        # Save to MongoDB
+        # Save to DB
         invoice_id = None
         if invoice_model:
-            # We explicitly pass user_id (email) to be stored as 'userId' in the DB
+            # IMPORTANT: pass user_id explicitly to match retrieval query key 'userId'
             invoice_id = invoice_model.save_extraction(
                 extracted_data=extracted_data,
                 canonical_data=canonical_data,
                 confidence_scores=confidence_scores,
                 status=status,
                 original_filename=file.filename,
-                metadata={"usage": usage_data},
+                metadata={"usage": usage_stats},
                 user_id=user_id 
             )
 
@@ -126,7 +127,7 @@ def extract_invoice():
             "status": status,
             "valid": is_valid_content,
             "error": val_error,
-            "usage_stats": usage_data,
+            "usage_stats": usage_stats,
             "timestamp": datetime.utcnow().isoformat()
         }), 200
 
@@ -134,9 +135,10 @@ def extract_invoice():
         logger.error(f"Extraction failed: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @extract_bp.route('/invoices/<invoice_id>/status', methods=['PUT', 'OPTIONS'])
 def update_invoice_status(invoice_id):
-    """Updates invoice status (approved/rejected) in the DB."""
+    """Updates the status (approved/rejected) and logs the approver."""
     if request.method == 'OPTIONS':
         return '', 200
 
@@ -177,11 +179,13 @@ def update_invoice_status(invoice_id):
         logger.error(f"Status update failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
 @extract_bp.route('/review-queue', methods=['GET'])
 def get_review_queue():
     if not invoice_model: return jsonify({"error": "Database error"}), 500
     invoices = invoice_model.get_review_queue(limit=20)
     return jsonify({"invoices": invoices, "count": len(invoices)}), 200
+
 
 @extract_bp.route('/analytics', methods=['GET'])
 def get_analytics():
@@ -189,9 +193,10 @@ def get_analytics():
     analytics = invoice_model.get_analytics()
     return jsonify(analytics), 200
 
+
 @extract_bp.route('/invoices', methods=['GET'])
 def get_invoices():
-    """Fetch all invoices for the current user's Activity Log."""
+    """Fetch all invoices for the specific user's Activity Feed."""
     if not invoice_model: return jsonify({"error": "Database error"}), 500
 
     auth_header = request.headers.get("Authorization", "")
@@ -200,14 +205,15 @@ def get_invoices():
     try:
         data = json.loads(raw_token)
         if isinstance(data, str): data = json.loads(data)
+        # Identify user by email from the token
         user_id = data.get("email")
-    except:
+    except Exception:
         return jsonify({"error": "Invalid token"}), 401
 
     limit = int(request.args.get('limit', 50))
     
     try:
-        # Search by 'userId' which is where the email is stored
+        # Search MongoDB using 'userId' field
         query = {"userId": user_id}
         cursor = invoice_model.db.invoices.find(query).sort("created_at", -1).limit(limit)
         invoices = list(cursor)
