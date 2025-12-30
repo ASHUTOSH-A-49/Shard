@@ -10,13 +10,12 @@ import Landing from "@/pages/Landing";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import Upload from "@/pages/Upload";
-import Processing from "@/pages/Processing";
 import ReviewQueue from "@/pages/ReviewQueue";
 import Analytics from "@/pages/Analytics";
-import History from "@/pages/History";
 import Settings from "@/pages/Settings";
 import InvoiceDetails from "@/pages/InvoiceDetails";
 import NotFound from "@/pages/NotFound";
+import ActivityLog from "@/pages/ActivityLog"; // ✅ New Unified Page
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -56,11 +55,15 @@ const App = () => (
             >
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/upload" element={<Upload />} />
-              <Route path="/processing" element={<Processing />} />
-              <Route path="/processing/inv/:invoiceId" element={<InvoiceDetails />} />
+              
+              {/* ✅ Activity Log replaces both History and Processing */}
+              <Route path="/activity" element={<ActivityLog />} />
+              
+              {/* Keep this if you want to click details from the Activity Feed */}
+              <Route path="/activity/inv/:invoiceId" element={<InvoiceDetails />} />
+
               <Route path="/review-queue" element={<ReviewQueue />} />
               <Route path="/analytics" element={<Analytics />} />
-              <Route path="/history" element={<History />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
 

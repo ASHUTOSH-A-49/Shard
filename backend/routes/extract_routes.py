@@ -5,7 +5,6 @@ from datetime import datetime
 from uuid import uuid4
 from flask import Blueprint, request, jsonify
 from config import Config
-import jwt
 from services.groq_extractor import GroqExtractor
 from services.canonicalizer import DataCanonicalizer
 from services.confidence_scorer import ConfidenceScorer
@@ -15,6 +14,7 @@ from utils.image_quality import check_image_quality
 
 logger = logging.getLogger(__name__)
 
+# This prefix means all routes here start with /api
 extract_bp = Blueprint('extract', __name__, url_prefix='/api')
 
 # Initialize services
@@ -38,52 +38,30 @@ def health():
         "timestamp": datetime.utcnow().isoformat()
     }), 200
 
-from flask import request, jsonify
-import jwt, os, json
-from uuid import uuid4
-from datetime import datetime
-
 @extract_bp.route('/extract', methods=['POST'])
 def extract_invoice():
     """
-    Extract invoice data AND store with userId (from Bearer token)
+    Extract invoice data AND store with User Email (from token)
     """
 
     # ==========================================================
-    # 1️⃣ GET AND VERIFY USER FROM BEARER TOKEN
+    # 1️⃣ GET AND VERIFY USER FROM TOKEN
     # ==========================================================
-    #for actual token
-    # auth_header = request.headers.get("Authorization", "")
-    # token = auth_header.replace("Bearer ", "").strip()
-
-    # if not token:
-    #     return jsonify({"error": "Missing auth token"}), 401
-
-    # try:
-    #     decoded = decoded = jwt.decode(
-    #         token,
-    #         Config.JWT_SECRET,
-    #         algorithms=["HS256"]
-    #     )
-    #     user_id = decoded.get("userId")
-    #     if not user_id:
-    #         return jsonify({"error": "Token invalid: user missing"}), 401
-        #   except Exception as e:
-        #     return jsonify({"error": f"Invalid or expired token: {str(e)}"}), 401
-
-    #dummy token
     auth_header = request.headers.get("Authorization", "")
     raw_token = auth_header.replace("Bearer ", "").strip()
 
     try:
-        # token is JSON not JWT
+        # Using dummy JSON token for Hackathon/Dev
         data = json.loads(raw_token)
-        user_id = data.get("userId")
+        
+        # 👇 CHANGE: Prioritize 'email' as the ID, fallback to 'userId'
+        user_id = data.get("email") or data.get("userId")
+        
+        if not user_id:
+            return jsonify({"error": "Token missing email or userId"}), 401
     except:
-        return jsonify({"error": "Invalid test token format"}), 401
+        return jsonify({"error": "Invalid token format"}), 401
 
-
-    # print(f"user id is: {user_id}")
     # ==========================================================
     # 2️⃣ SAFETY CHECK: FILE VALIDATION
     # ==========================================================
@@ -115,7 +93,6 @@ def extract_invoice():
                 "quality_score": round(score, 2)
             }), 400
 
-
     # ==========================================================
     # 3️⃣ EXTRACT USING GROQ API
     # ==========================================================
@@ -138,9 +115,8 @@ def extract_invoice():
         confidence_scores = confidence_scorer.calculate_confidence(canonical_data)
         status = confidence_scores.get('status', 'needs_review')
 
-
         # ==========================================================
-        # 4️⃣ SAVE INVOICE WITH userId TO MONGODB
+        # 4️⃣ SAVE INVOICE WITH userId (EMAIL) TO MONGODB
         # ==========================================================
         invoice_id = str(uuid4())
         if invoice_model:
@@ -151,9 +127,8 @@ def extract_invoice():
                 status=status,
                 original_filename=file.filename,
                 metadata={"usage": usage_data},
-                user_id=user_id  # 👈💥 IMPORTANT LINE
+                user_id=user_id  # 👈 Saves the email
             )
-
 
         # ==========================================================
         # 5️⃣ RETURN FULL RESPONSE
@@ -172,8 +147,8 @@ def extract_invoice():
             "timestamp": datetime.utcnow().isoformat()
         }), 200
 
-
     except Exception as e:
+        logger.error(f"Extraction failed: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -206,45 +181,52 @@ def get_analytics():
     analytics = invoice_model.get_analytics()
     return jsonify(analytics), 200
 
+# ========== ACTIVITY LOG ROUTE ==========
+
 @extract_bp.route('/invoices', methods=['GET'])
-def get_invoice_history():
+def get_invoices():
     """
-    Fetch invoice history for logged-in user
+    Get all invoices for the Activity Feed.
+    Filters by the logged-in user email (or userId).
     """
     if not invoice_model:
         return jsonify({"error": "Database not initialized"}), 500
 
-    # ===== TEMP AUTH (same as extract) =====
+    # 1. Auth Check (Get User Email)
     auth_header = request.headers.get("Authorization", "")
     raw_token = auth_header.replace("Bearer ", "").strip()
 
     try:
         data = json.loads(raw_token)
-        user_id = data.get("userId")
+        # 👇 CHANGE: Match the extract logic (use email)
+        user_id = data.get("email") or data.get("userId")
     except:
-        return jsonify({"error": "Invalid test token format"}), 401
+        return jsonify({"error": "Invalid token"}), 401
 
-    status = request.args.get("status")
-    limit = int(request.args.get("limit", 20))
-    skip = int(request.args.get("skip", 0))
+    # 2. Query Parameters
+    limit = int(request.args.get('limit', 50))
+    
+    try:
+        # 3. Direct DB Query (filters by "userId" field in DB, which now holds the email)
+        query = {"userId": user_id}
+        
+        cursor = invoice_model.db.invoices.find(query).sort("created_at", -1).limit(limit)
+        invoices = list(cursor)
 
-    query = {"userId": user_id}
-    if status:
-        query["status"] = status
+        # 4. Serialize ObjectId
+        for inv in invoices:
+            inv["_id"] = str(inv["_id"])
 
-    invoices = list(
-        invoice_model.db.invoices
-        .find(query)
-        .sort("created_at", -1)
-        .skip(skip)
-        .limit(limit)
-    )
+        # 5. Return in format expected by frontend
+        return jsonify({
+            "success": True,
+            "count": len(invoices),
+            "invoices": invoices 
+        }), 200
 
-    for inv in invoices:
-        inv["_id"] = str(inv["_id"])
-
-    return jsonify({
-        "success": True,
-        "count": len(invoices),
-        "data": invoices
-    }), 200
+    except Exception as e:
+        logger.error(f"Error fetching invoices: {str(e)}")
+        return jsonify({
+            "success": False, 
+            "error": str(e)
+        }), 500

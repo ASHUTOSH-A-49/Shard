@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useInvoiceStore } from '@/store/invoiceStore';
 
+
 export default function Processing() {
   const { invoices } = useInvoiceStore();
   const processingInvoices = invoices.filter(inv => inv.status === 'processing');

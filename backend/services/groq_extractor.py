@@ -39,6 +39,7 @@ RULES:
 1. Return ONLY raw JSON. No markdown, no text.
 2. Use null for missing fields. 
 3. Use numeric types for amounts.
+4. check location or address if mentioned in invoice and based on that correct the currency 
 """
 
 

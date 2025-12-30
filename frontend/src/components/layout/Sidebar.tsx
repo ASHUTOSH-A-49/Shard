@@ -1,13 +1,12 @@
-import { useState,useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion, useMotionValueEvent } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, 
   Upload, 
-  Clock, 
+  Activity, // Changed icon for Activity Feed
   CheckSquare, 
   BarChart3, 
-  History, 
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -21,13 +20,13 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
+// ✅ UPDATED NAV ITEMS
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Upload, label: 'Upload', path: '/upload' },
-  { icon: Clock, label: 'Processing Queue', path: '/processing' },
+  { icon: Activity, label: 'Activity Feed', path: '/activity' }, // New Unified Page
   { icon: CheckSquare, label: 'Review Queue', path: '/review-queue' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-  { icon: History, label: 'History', path: '/history' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
@@ -55,12 +54,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       initial={false}
       animate={{ width: finalCollapsed ? 72 : 260 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border flex flex-col"
+      className="fixed left-0 top-0 z-40 h-screen bg-card border-r border-border flex flex-col shadow-lg"
     >
       {/* Logo */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-border">
         <Link to="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow">
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
             <FileText className="w-5 h-5 text-primary-foreground" />
           </div>
           {!finalCollapsed && (
@@ -68,7 +67,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="font-bold text-lg text-foreground"
+              className="font-bold text-lg text-foreground tracking-tight"
             >
               InvoiceAI
             </motion.span>
@@ -88,8 +87,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
                   isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-soft"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -109,21 +108,21 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </nav>
 
       {/* Toggle Button - Disabled on mobile */}
-      <div className="p-3 border-t border-sidebar-border">
+      <div className="p-3 border-t border-border">
         <Button
           variant="ghost"
           size="icon"
           onClick={isMobile ? undefined : onToggle}
           disabled={isMobile}
           className={cn(
-            "w-full h-9",
+            "w-full h-9 hover:bg-muted",
             isMobile && "opacity-50 cursor-not-allowed"
           )}
         >
           {finalCollapsed ? (
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
           ) : (
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
           )}
         </Button>
       </div>

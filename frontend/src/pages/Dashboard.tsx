@@ -1,28 +1,23 @@
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from 'framer-motion';
-import { useState,useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import axios from "axios";
 import {
   FileText,
   TrendingUp,
-  Clock,
   AlertCircle,
   Upload,
   CheckSquare,
   BarChart3,
-  Download,
-  DollarSign,
   Calendar,
   Cpu,
-  Database,
-  ArrowUpRight,
-  ArrowDownRight,
   Flame,
+  Loader2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useInvoiceStore } from '@/store/invoiceStore';
 import {
   AreaChart,
   Area,
@@ -34,60 +29,132 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
 } from 'recharts';
-
-// -------------------- SAMPLE DATA --------------------
-const volumeData = [
-  { name: 'Mon', invoices: 145 },
-  { name: 'Tue', invoices: 232 },
-  { name: 'Wed', invoices: 189 },
-  { name: 'Thu', invoices: 278 },
-  { name: 'Fri', invoices: 256 },
-  { name: 'Sat', invoices: 87 },
-  { name: 'Sun', invoices: 60 },
-];
-
-const confidenceData = [
-  { name: 'Auto-approved', value: 68, fill: 'hsl(var(--success))' },
-  { name: 'Needs Review', value: 22, fill: 'hsl(var(--warning))' },
-  { name: 'Manual Fix', value: 10, fill: 'hsl(var(--destructive))' },
-];
-
-
-
-
 
 // ======================================================
 //  DASHBOARD PAGE
 // ======================================================
 export default function Dashboard() {
-  const { analytics } = useInvoiceStore();
-  const [getLoginName, setgetLoginName] = useState("");
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState<any[]>([]);
 
-console.log("Login Name in Dashboard:", localStorage.getItem("username"));
+  // 👇 FETCH DATA
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user?.email) return;
 
-useEffect(() => {
-  const storedName = localStorage.getItem("username");
-  if (storedName) {
-    setgetLoginName(storedName);
+      try {
+        const token = JSON.stringify({ userId: user.id, email: user.email });
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+
+        // Fetch user's invoices
+        const res = await axios.get("http://localhost:5000/api/invoices?limit=500", config);
+
+        if (res.data.success) {
+          setInvoices(res.data.invoices);
+        }
+      } catch (error) {
+        console.error("Dashboard fetch error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user]);
+
+  // 🧮 CALCULATE STATS
+  const stats = useMemo(() => {
+    const total = invoices.length;
+    const approved = invoices.filter(i => i.status === 'approved' || i.status === 'auto_approved').length;
+    const review = invoices.filter(i => i.status === 'pending_review' || i.status === 'needs_review').length;
+    
+    // Average Confidence
+    const totalConf = invoices.reduce((acc, inv) => acc + (inv.confidence_scores?.overall_confidence || 0), 0);
+    const avgConf = total > 0 ? (totalConf / total).toFixed(1) : "0.0";
+
+    return {
+      total,
+      approved,
+      review,
+      avgConf,
+      approvalRate: total > 0 ? ((approved / total) * 100).toFixed(0) : "0",
+    };
+  }, [invoices]);
+
+  // 📊 CHART DATA: Volume (Last 7 Days)
+  const volumeData = useMemo(() => {
+    // 1. Generate the last 7 days based on LOCAL time
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return { 
+        // We use toDateString() to ignore time and get "Day Mon DD YYYY"
+        id: d.toDateString(), 
+        name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        invoices: 0 
+      };
+    });
+
+    // 2. Count invoices
+    invoices.forEach(inv => {
+      // Handle missing dates gracefully and match strictly by Date String
+      const rawDate = inv.created_at || inv.updated_at || new Date().toISOString();
+      const invDateStr = new Date(rawDate).toDateString();
+      
+      const dayObj = days.find(d => d.id === invDateStr);
+      if (dayObj) dayObj.invoices++;
+    });
+
+    return days;
+  }, [invoices]);
+
+  // 🏆 TOP VENDORS
+  const topVendors = useMemo(() => {
+    const vendorMap: Record<string, { count: number, total: number }> = {};
+    
+    invoices.forEach(inv => {
+      // Vendor Name Logic
+      const name = inv.canonical_data?.vendor_name?.value || 
+                   inv.extracted_data?.invoice_metadata?.company_name || 
+                   "Unknown Vendor";
+                   
+      const rawAmount = inv.canonical_data?.total_amount?.value || 0;
+      
+      // FIX: Robust Parsing (removes '$', ',', etc before parsing)
+      let amountVal = 0;
+      if (typeof rawAmount === 'number') {
+        amountVal = rawAmount;
+      } else if (typeof rawAmount === 'string') {
+        amountVal = parseFloat(rawAmount.replace(/[^0-9.-]+/g, "")) || 0;
+      }
+      
+      if (!vendorMap[name]) vendorMap[name] = { count: 0, total: 0 };
+      vendorMap[name].count++;
+      vendorMap[name].total += amountVal;
+    });
+
+    return Object.entries(vendorMap)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5); // Top 5
+  }, [invoices]);
+
+  // 🥧 STATUS CHART DATA
+  const confidenceData = [
+    { name: 'Approved', value: stats.approved, fill: 'hsl(var(--success))' },
+    { name: 'Review', value: stats.review, fill: 'hsl(var(--warning))' },
+    { name: 'Rejected', value: invoices.filter(i => i.status === 'rejected').length, fill: 'hsl(var(--destructive))' },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
   }
-}, []);
-
-  const kpiCards = [
-    { title: 'Total Processed', value: analytics.totalProcessed.toLocaleString(), change:'+12%', trend:'up', icon: FileText, color:'--primary' },
-    { title: 'Accuracy Rate', value: `${analytics.accuracyRate}%`, change:'+2.3%', trend:'up', icon: TrendingUp, color:'--success' },
-    { title: 'Avg Process Time', value: `${analytics.avgProcessingTime}s`, change:'-0.5s', trend:'up', icon: Clock, color:'--info' },
-    { title: 'Pending Review', value: analytics.pendingReview.toString(), change:'5 urgent', trend:'down', icon: AlertCircle, color:'--warning' },
-  ];
-
-  const extraKPIs = [
-    { title:"Today's Invoices", value:"42", change:"+12", trend:'up', icon:Calendar, color:"--info" },
-    { title:"Needs Review", value:"3", change:"-1", trend:'down', icon:AlertCircle, color:"--warning" },
-    { title:"This Month", value:"$198K", change:"+8%", trend:'up', icon:DollarSign, color:"--success" },
-    { title:"Avg AI Confidence", value:"91.2%", change:"+1.5%", trend:"up", icon:Cpu, color:"--primary" },
-  ];
 
   return (
     <div className="space-y-10 pb-10">
@@ -95,26 +162,29 @@ useEffect(() => {
       {/* HEADER */}
       <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}>
         <h1 className="text-2xl sm:text-3xl font-bold break-words">
-          Welcome back, {getLoginName}! 👋
+          Welcome back, {user?.name || "User"}! 👋
         </h1>
         <Badge variant="success" className="mt-1 flex items-center gap-1 w-fit">
-          <Flame className="w-4 h-4" /> 6 day streak — keep going!
+          <Flame className="w-4 h-4" /> System Operational
         </Badge>
       </motion.div>
 
-      {/* KPI ROW 1 */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {kpiCards.map((kpi, i)=>(
+      {/* KPI ROW - Updated to 3 columns since Cost Savings is removed */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-4">
+        {[
+          { title: 'Total Processed', value: stats.total, change:'All time', trend:'up', icon: FileText, color:'--primary' },
+          { title: 'Approval Rate', value: `${stats.approvalRate}%`, change:'Efficiency', trend:'up', icon: TrendingUp, color:'--success' },
+          { title: 'Pending Review', value: stats.review, change:'Action Needed', trend: stats.review > 0 ? 'down' : 'up', icon: AlertCircle, color:'--warning' },
+        ].map((kpi, i)=>(
           <Card key={i} className="hover-lift">
             <CardContent className="p-6 flex justify-between items-start">
               <div className="min-w-0">
                 <p className="text-sm text-muted-foreground">{kpi.title}</p>
                 <h2 className="text-2xl sm:text-3xl font-bold truncate">{kpi.value}</h2>
                 <span className={`text-sm flex items-center gap-1 mt-1 ${kpi.trend==='up'?'text-success':'text-warning'}`}>
-                  {kpi.trend==='up'?<ArrowUpRight/>:<ArrowDownRight/>} {kpi.change}
+                  {kpi.change}
                 </span>
               </div>
-
               <div
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex justify-center items-center"
                 style={{ background:`hsl(var(${kpi.color}) / .15)` }}
@@ -126,46 +196,43 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* KPI ROW 2 */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {extraKPIs.map((kpi, i)=>(
-          <Card key={i} className="hover-lift">
-            <CardContent className="p-6 flex justify-between items-start">
-              <div className="min-w-0">
-                <p className="text-sm text-muted-foreground">{kpi.title}</p>
-                <h2 className="text-xl sm:text-2xl font-bold truncate">{kpi.value}</h2>
-                <span className={`text-sm flex items-center gap-1 mt-1 ${kpi.trend==='up'?'text-success':'text-warning'}`}>
-                  {kpi.trend==='up'?<ArrowUpRight/>:<ArrowDownRight/>} {kpi.change}
-                </span>
-              </div>
-
-              <div
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex justify-center items-center"
-                style={{ background:`hsl(var(${kpi.color}) / .15)` }}
-              >
-                <kpi.icon className="w-4 h-4 sm:w-5 sm:h-5" style={{color:`hsl(var(${kpi.color}))`}}/>
-              </div>
+      {/* SECONDARY STATS (Smaller) */}
+      <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-4">
+         <Card className="hover-lift">
+            <CardContent className="p-4 flex items-center gap-4">
+               <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Calendar size={20}/></div>
+               <div>
+                 <p className="text-xs text-muted-foreground">This Week</p>
+                 <h3 className="font-bold text-lg">{volumeData.reduce((a,b)=>a+b.invoices,0)} Invoices</h3>
+               </div>
             </CardContent>
-          </Card>
-        ))}
+         </Card>
+         <Card className="hover-lift">
+            <CardContent className="p-4 flex items-center gap-4">
+               <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><Cpu size={20}/></div>
+               <div>
+                 <p className="text-xs text-muted-foreground">Avg Confidence</p>
+                 <h3 className="font-bold text-lg">{stats.avgConf}%</h3>
+               </div>
+            </CardContent>
+         </Card>
       </div>
 
       {/* ACTION BUTTONS */}
       <Card>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-6">
-          <Link to="/upload"><Button className="w-full h-[55px] text-sm sm:text-md gap-2 py-3 rounded-xl shadow-md"><Upload/> Upload</Button></Link>
-          <Link to="/review-queue"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><CheckSquare/> Queue</Button></Link>
-          <Link to="/analytics"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><BarChart3/> Analytics</Button></Link>
-          <Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><Download/> Export</Button>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-6">
+          <Link to="/upload"><Button className="w-full h-[55px] text-sm sm:text-md gap-2 py-3 rounded-xl shadow-md"><Upload/> Upload Invoice</Button></Link>
+          <Link to="/activity"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><CheckSquare/> Activity Feed</Button></Link>
+          <Link to="/analytics"><Button variant="outline" className="w-full h-[55px] text-sm gap-2 py-3 rounded-xl"><BarChart3/> Full Analytics</Button></Link>
         </CardContent>
       </Card>
 
-      {/* GRAPH + AI CONFIDENCE */}
+      {/* CHARTS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Chart */}
+        {/* Volume Chart */}
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="flex gap-2"><TrendingUp/> Volume Trend</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex gap-2"><TrendingUp/> 7-Day Volume</CardTitle></CardHeader>
           <CardContent className="h-[260px] sm:h-[350px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={volumeData}>
@@ -176,23 +243,24 @@ useEffect(() => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="name"/><YAxis/><Tooltip/>
+                <XAxis dataKey="name"/><YAxis allowDecimals={false} /><Tooltip/>
                 <Area type="monotone" dataKey="invoices" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#vol)"/>
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Pie */}
+        {/* Status Pie Chart */}
         <Card>
-          <CardHeader><CardTitle className="flex gap-2"><Cpu/> AI Confidence</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex gap-2"><Cpu/> Status Distribution</CardTitle></CardHeader>
           <CardContent className="flex flex-col h-[260px] sm:h-[350px]">
             <div className="flex-1 min-w-0">
               <ResponsiveContainer>
                 <PieChart>
-                  <Pie data={confidenceData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={4}>
+                  <Pie data={confidenceData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={4}>
                     {confidenceData.map((c,i)=><Cell key={i} fill={c.fill}/>)}
                   </Pie>
+                  <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -203,7 +271,7 @@ useEffect(() => {
                     <span className="w-3 h-3 rounded-full" style={{background:item.fill}}/>
                     {item.name}
                   </div>
-                  <strong>{item.value}%</strong>
+                  <strong>{item.value}</strong>
                 </div>
               ))}
             </div>
@@ -211,128 +279,65 @@ useEffect(() => {
         </Card>
       </div>
 
-
-      {/* ==== EVERYTHING ELSE BELOW THIS IS RESPONSIVE ALREADY ==== */}
-
-      {/* ROW: RECENT | FIELD ACCURACY | QUEUE + COST */}
+      {/* BOTTOM SECTION: RECENT & VENDORS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* RECENT */}
-        <Card className="min-w-0">
+        {/* Recent Activity */}
+        <Card className="min-w-0 lg:col-span-2">
           <CardHeader className="flex justify-between">
             <CardTitle>Recent Activity</CardTitle>
-            <Link to="/activity" className="text-primary text-sm">View All</Link>
+            <Link to="/activity" className="text-primary text-sm hover:underline">View All</Link>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {[
-              ["INV-001234", "Acme Corp • $15,000", "Approved"],
-              ["INV-001235", "XYZ Inc • $8,500", "Review"],
-              ["INV-001236", "Beta Ltd • $22,100", "Approved"],
-              ["INV-001237", "Gamma Co • $5,300", "Processing"],
-              ["INV-001238", "Delta LLC • $31,200", "Failed"],
-            ].map(([id,vendor,status],i)=>(
-              <div key={i} className="flex justify-between gap-3">
-                <div className="truncate">
-                  <b className="truncate block">{id}</b>
-                  <p className="text-muted-foreground truncate">{vendor}</p>
+            {invoices.slice(0, 5).map((inv, i)=>(
+              <div key={i} className="flex justify-between gap-3 items-center border-b border-border/40 pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                     <FileText className="w-5 h-5 text-muted-foreground"/>
+                   </div>
+                   <div className="truncate">
+                      <b className="truncate block">
+                        {inv.canonical_data?.vendor_name?.value || inv.extracted_data?.invoice_metadata?.company_name || "Unknown Vendor"}
+                      </b>
+                      <p className="text-muted-foreground truncate text-xs">
+                        {inv.fileName || "Invoice"} • {inv.created_at ? new Date(inv.created_at).toLocaleDateString() : 'N/A'}
+                      </p>
+                   </div>
                 </div>
                 <Badge variant={
-                  status==="Approved"?"success":
-                  status==="Review"?"warning":
-                  status==="Processing"?"info":"destructive"}>
-                  {status}
+                  (inv.status?.includes("approved") || (inv.confidence_scores?.overall_confidence > 80)) ?"success":
+                  inv.status?.includes("review")?"warning": "destructive"
+                }>
+                  {inv.confidence_scores?.overall_confidence?.toFixed(0)}% Conf.
                 </Badge>
               </div>
             ))}
+            {invoices.length === 0 && <p className="text-muted-foreground text-center py-4">No recent invoices.</p>}
           </CardContent>
         </Card>
 
-        {/* FIELD ACCURACY */}
-        <Card>
-          <CardHeader><CardTitle>Field Accuracy</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {[
-              ["Invoice Number","99.2%"],
-              ["Vendor Name","96.8%"],
-              ["Amount","98.5%"],
-              ["Date","94.1%"],
-              ["PO Reference","91.3%"],
-            ].map(([field,val],i)=>(
-              <div key={i}>
-                <div className="flex justify-between mb-1"><span>{field}</span><b>{val}</b></div>
-                <div className="h-2 bg-secondary rounded"><div className="h-full bg-primary" style={{width:val}}/></div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* PROCESSING + COST */}
-        <div className="space-y-4">
-
-          <Card>
-            <CardHeader><CardTitle>Processing Queue</CardTitle></CardHeader>
-            <CardContent className="text-sm space-y-2">
-              <div className="flex justify-between"><span>In queue</span><b>12</b></div>
-              <div className="flex justify-between"><span>Processing</span><b>3</b></div>
-              <div className="flex justify-between"><span>Completed</span><b>156</b></div>
-              <div className="flex justify-between border-t pt-2 mt-2 font-bold"><span>Total</span><span>171</span></div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-primary text-primary-foreground">
-            <CardContent className="p-4 space-y-1">
-              <div className="flex gap-2 text-md"><Database className="w-4 h-4"/> Cost Savings</div>
-              <h2 className="text-2xl font-bold">${analytics.costSaved.toLocaleString()}</h2>
-              <p className="text-sm opacity-80">Automation vs Manual</p>
-              <div className="text-sm border-t pt-1 mt-1 flex justify-between opacity-90">
-                <span>Per invoice</span><b>$36.30</b>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-
-      {/* TOP VENDORS + MONTHLY VOLUME */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <Card>
+        {/* Top Vendors */}
+        <Card className="h-full">
           <CardHeader><CardTitle>Top Vendors</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {[
-              ["Acme Corp",45,"$125,000","+12%"],
-              ["XYZ Inc",38,"$98,500","+8%"],
-              ["Beta Ltd",32,"$76,200","-3%"],
-              ["Gamma Co",28,"$62,800","+15%"],
-              ["Delta LLC",25,"$54,300","+5%"],
-            ].map(([name,count,val,change],i)=>(
-              <div key={i} className="flex justify-between gap-3">
-                <div><b>{i+1}. {name}</b><p className="text-muted-foreground text-xs">{count} invoices</p></div>
-                <div className="text-right"><b>{val}</b><p className={`text-xs ${change.includes('-')?'text-destructive':'text-success'}`}>{change}</p></div>
+          <CardContent className="text-sm space-y-4">
+            {topVendors.map((vendor, i) => (
+              <div key={i} className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                   <div className="text-muted-foreground font-mono text-xs w-4">{i+1}</div>
+                   <div>
+                     <div className="font-bold truncate max-w-[120px]">{vendor.name}</div>
+                     <div className="text-xs text-muted-foreground">{vendor.count} invoices</div>
+                   </div>
+                </div>
+                <div className="font-mono font-bold text-right">
+                  ${vendor.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </div>
               </div>
             ))}
+            {topVendors.length === 0 && <p className="text-muted-foreground text-center pt-4">No vendor data.</p>}
           </CardContent>
         </Card>
 
-        <Card className="min-w-0">
-          <CardHeader><CardTitle>Monthly Volume</CardTitle></CardHeader>
-          <CardContent className="h-[250px] sm:h-[300px] min-w-0">
-            <ResponsiveContainer>
-              <BarChart data={[
-                {month:'Jul',val:140000},
-                {month:'Aug',val:158000},
-                {month:'Sep',val:149000},
-                {month:'Oct',val:172000},
-                {month:'Nov',val:185000},
-                {month:'Dec',val:192000},
-              ]}>
-                <CartesianGrid strokeDasharray="3 3"/>
-                <XAxis dataKey="month"/><YAxis/><Tooltip/>
-                <Bar dataKey="val" fill="hsl(var(--primary))" radius={[8,8,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

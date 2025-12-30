@@ -18,7 +18,7 @@ def check_image_quality(file_bytes, blur_threshold=160.0, contrast_threshold=40.
 
         # 1. Resolution Check (Extremity: Image too small)
         height, width = img.shape[:2]
-        if height < 500 or width < 400:
+        if height < 200 or width < 200:
             return True, f"Resolution too low ({width}x{height})", 0.0
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

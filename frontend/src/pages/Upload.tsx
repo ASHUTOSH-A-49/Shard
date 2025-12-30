@@ -8,122 +8,142 @@ import {
   HiOutlineCloudArrowUp,
   HiOutlineDocumentText,
   HiOutlineSparkles,
-  HiOutlineUser,
   HiOutlineCheckCircle,
-  HiOutlineEnvelope,
-  HiOutlineArchiveBox,
   HiOutlineDocumentDuplicate,
   HiOutlineArrowPath
 } from 'react-icons/hi2';
 import { useInvoiceStore } from '@/store/invoiceStore';
-import { mockApi } from '@/services/mockApi';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-type UploadMode = 'single' | 'batch' | 'email';
+// Removed 'email' from type
+type UploadMode = 'single' | 'batch';
 
 const UploadPage: React.FC = () => {
   const navigate = useNavigate();
-  const { addInvoice, confidenceThresholds } = useInvoiceStore();
+  const { addInvoice, updateInvoice } = useInvoiceStore();
+  const { user } = useAuth(); 
 
   const [uploadMode, setUploadMode] = useState<UploadMode>('single');
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
-  const [emailConfig, setEmailConfig] = useState({ email: '', connected: false, fetching: false });
 
   // SINGLE UPLOAD
   const onDropSingle = useCallback(async (files: File[]) => {
-  if (!files.length) return;
-  const file = files[0];
-  setIsProcessing(true);
+    if (!files.length) return;
+    const file = files[0];
+    
+    setIsProcessing(true);
 
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
+    const tempId = Date.now().toString();
 
-    // 🔐 Get Auth Info
-    // const token = localStorage.getItem("token");    // e.g. JWT or dummy JSON string
-    // const userId = localStorage.getItem("userId");  // only if separately stored
-    const token = JSON.stringify({ userId: "myuserid" });
-
-    if (!token) {
-      toast.error("No auth token found. Please login.");
-      setIsProcessing(false);
-      return;
-    }
-
-    // 📡 Send request
-    const res = await axios.post(
-      "http://localhost:5000/api/extract",
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,   // 👈 MOST IMPORTANT
-        },
-        // params: { userId }  // optional fallback (not required if JWT contains user)
-      }
-    );
-
-    const response = res.data;
-    console.log("🔎 Backend Response:", response);
-
-    if (!response.success) {
-      toast.error(response.error || "Extraction failed");
-      return;
-    }
-
-    // 📌 Convert backend fields for UI display
-    const formattedFields = Object.entries(response.canonical_data).map(
-      ([key, value]: any) => ({
-        key,
-        value,
-        confidence: response.confidence?.[key] ?? 90,
-      })
-    );
-
-    setExtractedData({
-      invoiceId: response.invoice_id,
-      fields: formattedFields,
-      overallConfidence: response.confidence?.overall ?? 88,
+    // ADD TO STORE
+    addInvoice({
+      id: tempId,
       fileName: file.name,
+      vendor: "Analyzing...",
+      amount: 0,
+      currency: "USD",
+      date: new Date().toISOString(),
+      status: 'processing',
+      confidence: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     });
 
-    toast.success("🚀 Extraction complete!");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-  } catch (error: any) {
-    console.error("❌ Upload/Extraction failed:", error);
-    toast.error(error?.response?.data?.error || "Server error");
-  } finally {
-    setIsProcessing(false);
-  }
-}, []);
+      const userEmail = user?.email || "guest@example.com";
+      const userId = user?.id || "guest_123";
+      
+      const token = JSON.stringify({ 
+        userId: userId,
+        email: userEmail 
+      });
 
+      const res = await axios.post(
+        "http://localhost:5000/api/extract",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
+      const response = res.data;
+      console.log("🔎 Backend Response:", response);
+
+      if (!response.success) {
+        throw new Error(response.error || "Extraction failed");
+      }
+
+      // Format fields for UI
+      const formattedFields = Object.entries(response.canonical_data).map(
+        ([key, value]: any) => ({
+          key,
+          value,
+          confidence: response.confidence?.[key] ?? 90,
+        })
+      );
+
+      // UPDATE STORE: Success
+      updateInvoice(tempId, {
+        status: 'approved',
+        vendor: response.canonical_data.vendor_name?.value || "Unknown Vendor",
+        amount: typeof response.canonical_data.total_amount?.value === 'number' 
+          ? response.canonical_data.total_amount.value 
+          : 0,
+        confidence: response.confidence?.overall || 0,
+        extractedData: response.extracted_data
+      });
+
+      setExtractedData({
+        invoiceId: response.invoice_id, 
+        fields: formattedFields,
+        overallConfidence: response.confidence?.overall ?? 88,
+        fileName: file.name,
+      });
+
+      toast.success("🚀 Extraction complete!");
+
+    } catch (error: any) {
+      console.error("❌ Upload/Extraction failed:", error);
+      const errorMsg = error?.response?.data?.error || "Server error";
+      toast.error(errorMsg);
+
+      updateInvoice(tempId, { status: 'failed' });
+
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [addInvoice, updateInvoice, user]);
+
+  // SINGLE DROPZONE CONFIG (Removed TIFF)
   const { getRootProps: getSingleRootProps, getInputProps: getSingleInputProps, isDragActive: isSingleActive } = useDropzone({
     onDrop: onDropSingle,
     accept: {
       'application/pdf': ['.pdf'],
       'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/tiff': ['.tif', '.tiff'],
-      'image/x-tiff': ['.tif', '.tiff']
+      'image/png': ['.png']
     },
     multiple: false,
     disabled: uploadMode !== 'single' || isProcessing
   });
 
-  // BATCH
+  // BATCH DROPZONE CONFIG (Removed TIFF)
   const { getRootProps: getBatchRootProps, getInputProps: getBatchInputProps, isDragActive: isBatchActive } = useDropzone({
     onDrop: (files) => setBatchFiles((prev) => [...prev, ...files]),
     accept: {
       'application/pdf': ['.pdf'],
       'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/tiff': ['.tif', '.tiff'],
-      'image/x-tiff': ['.tif', '.tiff']
+      'image/png': ['.png']
     },
     disabled: uploadMode !== 'batch' || isProcessing
   });
@@ -137,12 +157,11 @@ const UploadPage: React.FC = () => {
           <p className="text-muted-foreground text-sm">Drop your invoice & let AI handle extraction</p>
         </div>
 
-        {/* MODES */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* MODES - Removed Email Option */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[
             { id: 'single', label: 'Single Upload', icon: HiOutlineDocumentText, desc: 'One at a time' },
             { id: 'batch', label: 'Batch Upload', icon: HiOutlineDocumentDuplicate, desc: 'Upload many' },
-            { id: 'email', label: 'Email Import', icon: HiOutlineEnvelope, desc: 'Sync inbox' },
           ].map((mode) => (
             <button
               key={mode.id}
@@ -165,57 +184,48 @@ const UploadPage: React.FC = () => {
           {!extractedData ? (
             <motion.div key={uploadMode} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
 
-              {uploadMode === "email" ? (
-                <div className="border border-border bg-card rounded-2xl p-12 text-center space-y-6">
-                  <HiOutlineEnvelope className="w-16 h-16 text-emerald-500 mx-auto" />
-                  <h2 className="text-xl font-bold">Sync Email Inbox</h2>
-                  <Button className="bg-primary text-primary-foreground px-8 py-2 font-bold rounded-xl h-12">
-                    Connect Gmail/Outlook
-                  </Button>
-                </div>
-              ) : (
-                <div
-                  {...(uploadMode === "single" ? getSingleRootProps() : getBatchRootProps())}
-                  className={cn(
-                    "border-2 border-dashed rounded-2xl w-full transition-all cursor-pointer",
-                    "flex flex-col items-center justify-center text-center",
-                    "p-10 sm:p-16 md:p-20 min-h-[280px] sm:min-h-[350px] md:min-h-[400px]",
-                    (isSingleActive || isBatchActive)
-                      ? "border-emerald-500 bg-emerald-500/10"
-                      : "border-border bg-card hover:border-emerald-500/40"
-                  )}
-                >
-                  <input {...(uploadMode === "single" ? getSingleInputProps() : getBatchInputProps())} />
+              <div
+                {...(uploadMode === "single" ? getSingleRootProps() : getBatchRootProps())}
+                className={cn(
+                  "border-2 border-dashed rounded-2xl w-full transition-all cursor-pointer",
+                  "flex flex-col items-center justify-center text-center",
+                  "p-10 sm:p-16 md:p-20 min-h-[280px] sm:min-h-[350px] md:min-h-[400px]",
+                  (isSingleActive || isBatchActive)
+                    ? "border-emerald-500 bg-emerald-500/10"
+                    : "border-border bg-card hover:border-emerald-500/40"
+                )}
+              >
+                <input {...(uploadMode === "single" ? getSingleInputProps() : getBatchInputProps())} />
 
-                  {isProcessing ? (
-                    <div className="flex flex-col items-center space-y-4">
-                      <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1.3 }}>
-                        <HiOutlineSparkles className="w-14 h-14 text-emerald-500" />
-                      </motion.div>
-                      <h2 className="text-lg font-bold leading-tight">AI is extracting data…</h2>
-                      <p className="text-muted-foreground text-sm">Processing fields & verifying accuracy</p>
+                {isProcessing ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 1.3 }}>
+                      <HiOutlineSparkles className="w-14 h-14 text-emerald-500" />
+                    </motion.div>
+                    <h2 className="text-lg font-bold leading-tight">AI is extracting data…</h2>
+                    <p className="text-muted-foreground text-sm">Processing fields & verifying accuracy</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-4 rounded-xl border mb-4">
+                      <HiOutlineCloudArrowUp className="w-12 h-12 text-emerald-500" />
                     </div>
-                  ) : (
-                    <>
-                      <div className="p-4 rounded-xl border mb-4">
-                        <HiOutlineCloudArrowUp className="w-12 h-12 text-emerald-500" />
-                      </div>
-                      <h2 className="text-lg sm:text-xl font-bold leading-tight">
-                        {uploadMode === "batch" ? "Drop multiple files" : "Drag & drop invoice here"}
-                      </h2>
-                      <p className="text-muted-foreground text-sm mt-1">or click to browse</p>
+                    <h2 className="text-lg sm:text-xl font-bold leading-tight">
+                      {uploadMode === "batch" ? "Drop multiple files" : "Drag & drop invoice here"}
+                    </h2>
+                    <p className="text-muted-foreground text-sm mt-1">or click to browse</p>
 
-                      <div className="flex flex-wrap justify-center gap-2 mt-6">
-                        {['PDF', 'JPG', 'PNG', 'TIFF'].map(ext => (
-                          <span key={ext} className="bg-emerald-500 px-3 py-1 rounded text-xs font-bold border uppercase text-white">
-                            {ext}
-                          </span>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+                    {/* Removed TIFF tag */}
+                    <div className="flex flex-wrap justify-center gap-2 mt-6">
+                      {['PDF', 'JPG', 'PNG'].map(ext => (
+                        <span key={ext} className="bg-emerald-500 px-3 py-1 rounded text-xs font-bold border uppercase text-white">
+                          {ext}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </motion.div>
           ) : (
 
@@ -245,35 +255,33 @@ const UploadPage: React.FC = () => {
               </Card>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  {extractedData.fields.map((field: any) => (
-    <div
-      key={field.key}
-      className="bg-card border border-border rounded-xl p-5 hover:border-emerald-500/40 transition"
-    >
-      <div className="text-xs uppercase text-muted-foreground font-bold flex justify-between">
-        {field.key}
-        <span className="text-emerald-500">● {field.confidence}%</span>
-      </div>
+                {extractedData.fields.map((field: any) => (
+                  <div
+                    key={field.key}
+                    className="bg-card border border-border rounded-xl p-5 hover:border-emerald-500/40 transition"
+                  >
+                    <div className="text-xs uppercase text-muted-foreground font-bold flex justify-between">
+                      {field.key}
+                      <span className="text-emerald-500">● {field.confidence}%</span>
+                    </div>
 
-      {/* 🔥 FIX FOR OBJECT VALUES */}
-      <div className="font-medium whitespace-pre-wrap">
-        {typeof field.value === "object" && field.value !== null
-          ? Object.entries(field.value)
-              .map(([k, v]) => `${k}: ${v ?? "N/A"}`)
-              .join("\n")
-          : field.value}
-      </div>
-    </div>
-  ))}
-</div>
-
+                    <div className="font-medium whitespace-pre-wrap">
+                      {typeof field.value === "object" && field.value !== null
+                        ? Object.entries(field.value)
+                            .map(([k, v]) => `${k}: ${v ?? "N/A"}`)
+                            .join("\n")
+                        : field.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button onClick={() => navigate('/history')} className="flex-1 bg-emerald-500 text-white font-black h-12 rounded-xl">
-                  <HiOutlineCheckCircle className="mr-2" /> Approve & Archive
+                <Button onClick={() => navigate('/activity')} className="flex-1 bg-emerald-500 text-white font-black h-12 rounded-xl">
+                  <HiOutlineCheckCircle className="mr-2" /> Approve & View Feed
                 </Button>
                 <Button variant="outline" onClick={() => setExtractedData(null)} className="h-12 rounded-xl font-bold">
-                  <HiOutlineArrowPath className="mr-2" /> Cancel
+                  <HiOutlineArrowPath className="mr-2" /> Upload Another
                 </Button>
               </div>
 
