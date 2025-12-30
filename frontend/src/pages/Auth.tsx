@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import api from "../lib/api.ts";
 import { Link, useNavigate } from "react-router-dom";
 import {
   HiOutlineMail,
@@ -102,13 +103,19 @@ const Auth = () => {
       // 🔑 Get ID Token (optional for backend verify)
       const token = await userCredential.user.getIdToken();
 
-      await fetch("http://localhost:5000/api/auth/verify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.post("/api/auth/verify", {}, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (response.status === 200) {
+    // Handle successful verification
+  }
+} catch (error) {
+  console.error("Authentication verification failed:", error);
+  // Handle error (e.g., redirect to login)
+}
 
       navigate("/dashboard");
     } catch (error: any) {

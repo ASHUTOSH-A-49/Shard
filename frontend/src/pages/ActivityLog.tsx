@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
+import api from "../lib/api.ts";
 import { 
   Loader2, 
   Calendar, 
@@ -61,9 +61,9 @@ export default function ActivityLog() {
             email: user.email 
         });
 
-        const res = await axios.get("http://localhost:5000/api/invoices", {
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get("/api/invoices", {
+    headers: { Authorization: `Bearer ${token}` }
+});
 
         if (res.data.success) {
           const currentLocalInvoices = useInvoiceStore.getState().invoices;

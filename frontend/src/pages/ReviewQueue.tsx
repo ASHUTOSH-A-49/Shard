@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
+import api from "../lib/api.ts";
 import {
   Search,
   CheckCircle,
@@ -62,9 +62,7 @@ export default function ReviewQueue() {
 
       try {
         const token = JSON.stringify({ userId: user.id, email: user.email });
-        const res = await axios.get("http://localhost:5000/api/invoices", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get("/api/invoices");
 
         if (res.data.success) {
           const queueItems = res.data.invoices
@@ -143,15 +141,10 @@ export default function ReviewQueue() {
       const token = JSON.stringify({ userId: user.id, email: user.email });
       
       // Call Backend API to update status
-      await axios.put(
-        `http://localhost:5000/api/invoices/${id}/status`, 
-        { 
-          status: decision,
-          approved_by: user.name || user.email // Log who approved it
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      await api.put(`/api/invoices/${id}/status`, {
+    status: decision,
+    approved_by: user?.email
+});
       // UI Updates
       toast.success(`Invoice ${decision === 'approved' ? 'Approved' : 'Rejected'} successfully`);
       setInvoices(prev => prev.filter(inv => inv.id !== id)); // Remove from list

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from "../lib/api.ts";
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -66,16 +66,12 @@ const UploadPage: React.FC = () => {
         email: userEmail 
       });
 
-      const res = await axios.post(
-        "http://localhost:5000/api/extract",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await api.post('/api/extract', formData, {
+    headers: {
+        'Content-Type': 'multipart/form-data',
+        Authorization: `Bearer ${token}`
+    }
+});
 
       const response = res.data;
       console.log("🔎 Backend Response:", response);

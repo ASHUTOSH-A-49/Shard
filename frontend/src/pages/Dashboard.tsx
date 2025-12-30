@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+import api from "../lib/api.ts";
 import {
   FileText,
   TrendingUp,
@@ -49,7 +49,7 @@ export default function Dashboard() {
         const config = { headers: { Authorization: `Bearer ${token}` } };
 
         // Fetch user's invoices
-        const res = await axios.get("http://localhost:5000/api/invoices?limit=500", config);
+       const res = await api.get("/api/invoices?limit=500", config);
 
         if (res.data.success) {
           setInvoices(res.data.invoices);

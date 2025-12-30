@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import api from "../lib/api.ts";
 import {
   FileText,
   TrendingUp,
@@ -38,9 +38,9 @@ export default function Analytics() {
 
       try {
         const token = JSON.stringify({ userId: user.id, email: user.email });
-        const res = await axios.get("http://localhost:5000/api/invoices?limit=1000", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get("/api/invoices?limit=1000", {
+    headers: { Authorization: `Bearer ${token}` }
+});
 
         if (res.data.success) {
           setInvoices(res.data.invoices);
