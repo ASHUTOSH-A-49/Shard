@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import { motion } from 'framer-motion';
 import {
   FileText,

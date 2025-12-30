@@ -14,7 +14,7 @@ pymongo==4.6.0
 # Image Processing and Quality Checks
 # Required for Blur, Brightness, and Contrast checks
 opencv-python==4.8.1.78
-numpy==1.26.2
+numpy
 # Required for basic image manipulation and Base64 encoding
 pillow>=11.0.0
 

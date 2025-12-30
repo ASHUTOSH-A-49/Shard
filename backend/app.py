@@ -5,6 +5,8 @@ from flask_cors import CORS
 from config import config
 from routes.extract_routes import extract_bp, set_invoice_model
 from models.invoices import InvoiceModel
+from routes.auth_routes import auth_bp
+
 
 # Configure logging
 logging.basicConfig(
@@ -34,7 +36,7 @@ def create_app(config_name: str = 'development') -> Flask:
 
     # Register blueprints
     app.register_blueprint(extract_bp)
-
+    app.register_blueprint(auth_bp)
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):
