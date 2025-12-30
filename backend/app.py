@@ -23,9 +23,14 @@ def create_app(config_name: str = 'development') -> Flask:
     # 👇 FIXED CORS SECTION
     # This explicitly allows PUT requests and Authorization headers
     # ------------------------------------------------------------
-    CORS(app, resources={r"/*": {"origins": "*"}}, 
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization"])
+    CORS(app, resources={r"/*": {
+    "origins": [
+        "https://shard-9qyi.onrender.com", 
+        "http://localhost:8080"
+    ],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
     # ------------------------------------------------------------
 
     # Initialize MongoDB
