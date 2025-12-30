@@ -81,21 +81,21 @@ export default function Settings() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" defaultValue="Vaibhavi" />
+                    <Input id="firstName" defaultValue="not entered" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" defaultValue="Sharma" />
+                    <Input id="lastName" defaultValue="not entered" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" defaultValue="vaibhavi@hackxios.dev" />
+                  <Input id="email" type="email" defaultValue="your gmail" />
                 </div>
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="company">Company</Label>
                   <Input id="company" defaultValue="HackXios 2K25" />
-                </div>
+                </div> */}
                 <Button onClick={handleSave}>
                   <Save className="w-4 h-4" />
                   Save Changes

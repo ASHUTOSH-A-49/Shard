@@ -13,6 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+import { db } from "@/services/firebase";
+import { setDoc, doc, getDoc } from "firebase/firestore";
+
+
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -62,21 +66,42 @@ const Auth = () => {
           formData.email,
           formData.password
         );
+
+        const user = userCredential.user;
+
+        // 📌 FETCH NAME FROM FIRESTORE AND SAVE LOCALLY
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          localStorage.setItem("username", userData.name);
+        }
+
         toast.success("Welcome back!");
       } else {
-        // 🔐 SIGNUP
+        // 🆕 SIGNUP
         userCredential = await createUserWithEmailAndPassword(
           auth,
           formData.email,
           formData.password
         );
+
+        const user = userCredential.user;
+
+        // 💾 SAVE USER NAME IN FIRESTORE
+        await setDoc(doc(db, "users", user.uid), {
+          name: formData.name,
+          email: formData.email,
+        });
+
+        // 📌 Store name in LocalStorage
+        localStorage.setItem("username", formData.name);
+
         toast.success("Account created successfully!");
       }
 
-      // 🔑 Get Firebase ID Token
+      // 🔑 Get ID Token (optional for backend verify)
       const token = await userCredential.user.getIdToken();
 
-      // 🚀 Send token to Python backend
       await fetch("http://localhost:5000/api/auth/verify", {
         method: "POST",
         headers: {
@@ -92,6 +117,7 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -210,8 +236,8 @@ const Auth = () => {
               {loading
                 ? "Please wait..."
                 : isLogin
-                ? "Sign In"
-                : "Create Account"}
+                  ? "Sign In"
+                  : "Create Account"}
             </Button>
           </form>
 
