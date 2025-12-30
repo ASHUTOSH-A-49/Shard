@@ -52,7 +52,7 @@ def extract_invoice():
         if isinstance(data, str): data = json.loads(data)
         
         # We prioritize 'email' to match the retrieval query in get_invoices
-        user_id = data.get("email") or data.get("username")
+        user_id = data.get("email") or data.get("name")
         
         if not user_id: 
             return jsonify({"error": "Token missing identifier"}), 401
@@ -208,7 +208,7 @@ def get_invoices():
         data = json.loads(raw_token)
         if isinstance(data, str): data = json.loads(data)
         # Search by email (this matches the saved userId from the extract route)
-        user_id = data.get("username")
+        user_id = data.get("name")
     except Exception:
         return jsonify({"error": "Invalid token"}), 401
 
