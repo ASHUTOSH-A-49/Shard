@@ -61,7 +61,7 @@ export default function ReviewQueue() {
       if (!user?.email) return;
 
       try {
-        const token = JSON.stringify({ userId: user.id, email: user.email });
+        const token = JSON.stringify({ userId: user.username, email: user.email });
         const res = await api.get("/api/invoices");
 
         if (res.data.success) {
