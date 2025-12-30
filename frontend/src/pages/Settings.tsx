@@ -60,10 +60,10 @@ export default function Settings() {
             <Sliders className="w-4 h-4 mr-2" />
             Processing
           </TabsTrigger>
-          <TabsTrigger value="notifications">
+          {/* <TabsTrigger value="notifications">
             <Bell className="w-4 h-4 mr-2" />
-            Notifications
-          </TabsTrigger>
+           Notifications
+          </TabsTrigger> */}
         </TabsList>
 
         {/* Profile Tab */}
