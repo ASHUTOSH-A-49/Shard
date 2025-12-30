@@ -52,7 +52,7 @@ def extract_invoice():
         if isinstance(data, str): data = json.loads(data)
         
         # Use email as the primary unique identifier for MongoDB queries
-        user_id = data.get("email") or data.get("userId")
+        user_id =data.get("userId")
         
         if not user_id: 
             return jsonify({"error": "Token missing email identifier"}), 401

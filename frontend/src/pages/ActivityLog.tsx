@@ -64,6 +64,7 @@ export default function ActivityLog() {
         const res = await api.get("/api/invoices", {
     headers: { Authorization: `Bearer ${token}` }
 });
+console.log("DB Data Received:", res.data.invoices);
 
         if (res.data.success) {
           const currentLocalInvoices = useInvoiceStore.getState().invoices;
