@@ -76,6 +76,9 @@ def create_app(config_name: str = 'development') -> Flask:
     logger.info(f"App created with config: {config_name}")
     return app
 
+env_name = os.getenv('FLASK_ENV', 'production')
+app = create_app(env_name)
+
 if __name__ == '__main__':
     env = os.getenv('FLASK_ENV', 'development')
     app = create_app(env)
