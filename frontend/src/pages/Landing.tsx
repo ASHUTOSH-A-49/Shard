@@ -53,7 +53,7 @@ export default function Landing() {
       <header className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border">
   <div className="container mx-auto px-4 h-16 flex items-center justify-between">
     <Link to="/" className="flex items-center gap-1 min-w-0 flex-shrink">
-      <img src="\src\assets\logo2.png" alt="InvoiceAILogo" className="w-10 h-10 object-contain" />
+      <img src="../assets/logo2.png" alt="InvoiceAILogo" className="w-10 h-10 object-contain" />
       <span className="font-bold text-lg sm:text-xl text-foreground truncate">InvoiceAI</span>
     </Link>
 
