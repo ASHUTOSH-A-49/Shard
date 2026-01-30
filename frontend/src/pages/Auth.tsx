@@ -39,98 +39,68 @@ const Auth = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!formData.email || !formData.password) return;
 
-    if (!formData.email || !formData.password) {
-      toast.error("Please fill in all required fields");
-      return;
+  try {
+    setLoading(true);
+
+    // 1. PRIMARY AUTH (Critical Path)
+    const userCredential = isLogin 
+      ? await signInWithEmailAndPassword(auth, formData.email, formData.password)
+      : await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+
+    const firebaseUser = userCredential.user;
+    
+    // 2. PARALLEL OPERATIONS
+    // Start getting the token and the Firestore data at the same time
+    const tokenPromise = firebaseUser.getIdToken();
+    
+    let displayName = formData.name; // Default for Signup
+
+    if (isLogin) {
+      // Fetch name only if logging in
+      const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+      displayName = userDoc.exists() ? userDoc.data().name : "User";
+    } else {
+      // Signup: Save to Firestore but DON'T 'await' it if you want max speed
+      // The user is already created in Auth, Firestore can happen in the background
+      setDoc(doc(db, "users", firebaseUser.uid), {
+        name: formData.name,
+        email: formData.email,
+        createdAt: new Date().toISOString(),
+      });
     }
 
-    if (!isLogin && formData.password !== formData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
+    const token = await tokenPromise;
 
-    try {
-      setLoading(true);
+    // 3. OPTIMISTIC UI STORAGE
+    const userPayload = {
+      id: firebaseUser.uid,
+      email: firebaseUser.email,
+      name: displayName,
+    };
+    localStorage.setItem("user", JSON.stringify(userPayload));
+    localStorage.setItem("username", displayName);
 
-      let userCredential;
-      let displayName = "";
+    // 4. BACKGROUND VERIFICATION (Don't 'await' this!)
+    // This allows the user to navigate while the backend wakes up
+    api.post("/api/auth/verify", {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(err => console.error("Background Verify Failed:", err));
 
-      if (isLogin) {
-        // 🔐 LOGIN
-        userCredential = await signInWithEmailAndPassword(
-          auth,
-          formData.email,
-          formData.password
-        );
+    // 5. IMMEDIATE NAVIGATION
+    toast.success(isLogin ? "Welcome back!" : "Account created!");
+    navigate("/dashboard");
 
-        const user = userCredential.user;
-
-        // 📌 FETCH NAME FROM FIRESTORE
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          displayName = userDoc.data().name;
-        }
-      } else {
-        // 🆕 SIGNUP
-        if (!formData.name) {
-          toast.error("Please enter your full name");
-          return;
-        }
-
-        userCredential = await createUserWithEmailAndPassword(
-          auth,
-          formData.email,
-          formData.password
-        );
-
-        const user = userCredential.user;
-        displayName = formData.name;
-
-        // 💾 SAVE USER IN FIRESTORE
-        await setDoc(doc(db, "users", user.uid), {
-          name: formData.name,
-          email: formData.email,
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      // 🔑 Get ID Token for backend verification
-      const firebaseUser = userCredential.user;
-      const token = await firebaseUser.getIdToken();
-
-      // ✅ STORE USER DATA FOR API INTERCEPTOR
-      // This ensures 'api.ts' can read the user object to build Bearer tokens
-      const userPayload = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email,
-        name: displayName,
-      };
-
-      localStorage.setItem("user", JSON.stringify(userPayload));
-      localStorage.setItem("username", displayName);
-
-      // 📡 VERIFY WITH BACKEND
-      try {
-        await api.post("/api/auth/verify", {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      } catch (err) {
-        console.error("Backend verification failed, but continuing to dashboard...");
-      }
-
-      toast.success(isLogin ? "Welcome back!" : "Account created successfully!");
-      navigate("/dashboard");
-
-    } catch (error: any) {
-      console.error("Auth error:", error);
-      toast.error(error.message || "Authentication failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error: any) {
+    console.error("Auth error:", error);
+    toast.error(error.message || "Authentication failed");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-background flex">
